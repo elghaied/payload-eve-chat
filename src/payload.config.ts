@@ -48,7 +48,7 @@ export default buildConfig({
         },
       },
       // In development, bypass API key auth so the endpoint is accessible without credentials.
-      ...(process.env.NODE_ENV !== 'production' && {
+      ...(process.env.NODE_ENV === 'development' && {
         overrideAuth: async () => ({
           posts: { find: true, create: true, update: true },
           tasks: { find: true, create: true, update: true },

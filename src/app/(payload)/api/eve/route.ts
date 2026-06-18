@@ -69,6 +69,10 @@ export async function POST(req: Request): Promise<Response> {
 
   return result.toUIMessageStreamResponse({
     originalMessages: messages,
+    // Tell the client which conversation this turn belongs to, so a brand-new
+    // chat can adopt the id and persist follow-up turns to the same thread
+    // (instead of creating a new conversation per message).
+    messageMetadata: () => ({ conversationId: String(conversation!.id) }),
     onFinish: ({ messages: finalMessages }) => {
       // Drop content-less messages (e.g. an empty assistant shell from a run that
       // errored before producing output) so a failed turn never poisons the thread.

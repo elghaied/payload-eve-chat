@@ -28,28 +28,59 @@ export const EveChat: React.FC<{
   activeId?: string
 }> = ({ initialMessages, conversations, activeId }) => {
   const router = useRouter()
+  // The conversation this chat persists to. Starts from the URL; for a brand-new
+  // chat it's undefined until the server creates one and we adopt the returned id.
+  // It is sent per-message (not used as the useChat id) so adopting it never
+  // resets the visible messages.
   const [conversationId, setConversationId] = useState<string | undefined>(activeId)
   const [input, setInput] = useState('')
+  // Sidebar list, seeded from the server. A newly created conversation is added
+  // here client-side so it appears immediately (a server refresh would reset the
+  // live chat). Re-seeds from the prop on remount (i.e. when navigating threads).
+  const [sidebarConversations, setSidebarConversations] = useState(conversations)
 
   const { messages, sendMessage, status, setMessages } = useChat({
-    id: conversationId ?? 'new',
+    // Stable chat identity for this mount. EveView keys EveChat by activeId, so
+    // switching threads remounts the component; this id must NOT change when we
+    // adopt a conversation id mid-session (that would clear the messages).
+    id: activeId ?? 'new',
     messages: initialMessages,
     transport: new DefaultChatTransport({
       api: '/api/eve',
-      prepareSendMessagesRequest: ({ messages: msgs }) => ({
-        body: { messages: msgs, conversationId },
+      // Forward the conversation id supplied per-message via sendMessage's body.
+      prepareSendMessagesRequest: ({ messages: msgs, body }) => ({
+        body: { messages: msgs, conversationId: body?.conversationId },
       }),
     }),
+    onFinish: ({ message, messages: finalMessages }) => {
+      // First reply of a new chat: adopt the server-created conversation id so
+      // follow-up turns in this session persist to the same thread instead of
+      // creating a new conversation each time, and add it to the sidebar.
+      const meta = message.metadata as { conversationId?: string } | undefined
+      const id = meta?.conversationId
+      if (id && !conversationId) {
+        setConversationId(id)
+        const title =
+          finalMessages
+            .find((m) => m.role === 'user')
+            ?.parts.flatMap((p) => (p.type === 'text' ? [p.text] : []))[0]
+            ?.slice(0, 80) || 'New conversation'
+        setSidebarConversations((prev) =>
+          prev.some((c) => c.id === id) ? prev : [{ id, title }, ...prev],
+        )
+      }
+    },
   })
 
   const handleSubmit = (message: PromptInputMessage) => {
     if (!message.text?.trim()) return
-    sendMessage({ text: message.text })
+    // Read conversationId at send time (latest state) and pass it per-message —
+    // no stale closure even right after adopting a new id.
+    sendMessage({ text: message.text }, { body: { conversationId } })
     setInput('')
   }
 
   const handleSelectConversation = (id: string) => {
-    setConversationId(id)
     router.push(`?conversation=${id}`)
   }
 
@@ -62,7 +93,7 @@ export const EveChat: React.FC<{
   return (
     <div className="eve-scope flex h-[calc(100vh-var(--app-header-height,0px))] min-h-[600px]">
       <ConversationSidebar
-        conversations={conversations}
+        conversations={sidebarConversations}
         activeId={conversationId}
         onSelect={handleSelectConversation}
         onNew={handleNewChat}

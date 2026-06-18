@@ -32,6 +32,14 @@ export async function POST(req: Request): Promise<Response> {
   }
   const { messages, conversationId } = body
 
+  let eveConfig
+  try {
+    eveConfig = getEveConfig()
+  } catch (err) {
+    payload.logger.error({ msg: 'Eve config error', err })
+    return Response.json({ error: (err as Error).message }, { status: 500 })
+  }
+
   // Resolve (or create) the conversation this thread persists to.
   const firstUserText =
     messages
@@ -45,14 +53,6 @@ export async function POST(req: Request): Promise<Response> {
     conversation = await createConversation(payload, typedUser, firstUserText.slice(0, 80))
   }
 
-  let eveConfig
-  try {
-    eveConfig = getEveConfig()
-  } catch (err) {
-    payload.logger.error({ msg: 'Eve config error', err })
-    return Response.json({ error: (err as Error).message }, { status: 500 })
-  }
-
   const { tools, close } = await createPayloadMcpTools(eveConfig)
 
   const modelMessages = await convertToModelMessages(messages)
@@ -63,9 +63,8 @@ export async function POST(req: Request): Promise<Response> {
     messages: modelMessages,
     tools,
     stopWhen: stepCountIs(5),
-    onFinish: () => {
-      void close()
-    },
+    onFinish: () => { void close() },
+    onAbort: () => { void close() },
   })
 
   return result.toUIMessageStreamResponse({

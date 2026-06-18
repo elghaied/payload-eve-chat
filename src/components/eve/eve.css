@@ -4,7 +4,6 @@
 /* Note: Preflight is intentionally omitted to avoid resetting Payload admin styles. */
 
 @import "tw-animate-css";
-@import "shadcn/tailwind.css";
 
 @custom-variant dark (&:is(.dark *));
 

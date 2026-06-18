@@ -22,6 +22,15 @@ export default buildConfig({
     importMap: {
       baseDir: path.resolve(dirname),
     },
+    components: {
+      afterNavLinks: ['/components/eve/EveNavLink#EveNavLink'],
+      views: {
+        eve: {
+          Component: '/components/eve/EveView#EveView',
+          path: '/eve',
+        },
+      },
+    },
   },
   collections: [Users, Media, Posts, Tasks, Conversations],
   editor: lexicalEditor(),

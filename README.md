@@ -62,6 +62,66 @@ Alternatively, you can use [Docker](https://www.docker.com) to spin up this temp
 
 That's it! The Docker instance will help you get up and running quickly while also standardizing the development environment across your teams.
 
+## AI Chat Agent (Eve)
+
+> Payload exposes its collections over MCP, and an in-admin chat agent built on the Vercel AI SDK operates the CMS entirely through those MCP tools — provider-swappable between Claude and GPT.
+
+### Architecture
+
+```
+┌────────────────────────────────────────────────────────────────┐
+│ Payload Admin (Next.js / React 19)                              │
+│                                                                 │
+│  Custom view  /admin/eve                                        │
+│   EveView (server) ──► EveChat (client, AI Elements + useChat)  │
+│                              │ POST /api/eve                     │
+└──────────────────────────────┼──────────────────────────────────┘
+                               ▼
+                  src/app/(payload)/api/eve/route.ts
+                   - payload.auth() (admin-only)
+                   - load/create Conversation
+                   - streamText({ model, tools, system })
+                   - persist UIMessage[] onFinish
+                          │              │
+              provider.ts ▼              ▼ mcp-client.ts
+        (anthropic | openai)      createMCPClient(HTTP)
+                                          │
+                                          ▼
+                            POST /api/mcp  (@payloadcms/plugin-mcp)
+                                          │
+                                          ▼
+                       Payload Local API → Posts / Tasks
+```
+
+The agent lives at `/admin/eve`, a custom Payload admin view. The UI is built with Vercel AI Elements and `useChat`, which streams to `POST /api/eve`. The route handler authenticates the admin user via `payload.auth()`, opens an HTTP MCP client pointed at Payload's own `/api/mcp` endpoint (served by `@payloadcms/plugin-mcp`), passes the MCP tools to `streamText`, streams the response back to the browser, and persists the conversation to a `Conversations` collection.
+
+The agent manages two demo collections — `Posts` and `Tasks` — exposed over MCP with find, create, and update operations (no delete).
+
+### Environment setup
+
+Copy `.env.example` to `.env` and fill in the required values:
+
+```
+# --- Eve chat agent ---
+AI_PROVIDER=anthropic            # or: openai
+ANTHROPIC_API_KEY=               # required when AI_PROVIDER=anthropic
+OPENAI_API_KEY=                  # required when AI_PROVIDER=openai
+ANTHROPIC_MODEL=claude-sonnet-4-6
+OPENAI_MODEL=gpt-4o
+MCP_SERVER_URL=http://localhost:3000/api/mcp
+MCP_API_KEY=                     # optional in dev; required in production
+```
+
+### Switching providers
+
+Set `AI_PROVIDER` to `anthropic` (default) or `openai`, then supply the matching API key. The default models are `claude-sonnet-4-6` and `gpt-4o` respectively; override with `ANTHROPIC_MODEL` or `OPENAI_MODEL`.
+
+### MCP authentication: dev vs. production
+
+In **development**, the `/api/mcp` endpoint requires no API key. The `MCP_API_KEY` variable can be left blank.
+
+In **production**, the MCP endpoint is protected. You need to create a Bearer API key in the `payload-mcp-api-keys` collection (managed inside the Payload admin), then set that key as `MCP_API_KEY` in your production environment.
+
 ## Questions
 
 If you have any issues or questions, reach out to us on [Discord](https://discord.com/invite/payload) or start a [GitHub discussion](https://github.com/payloadcms/payload/discussions).

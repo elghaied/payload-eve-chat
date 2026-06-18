@@ -1,0 +1,14 @@
+import { createAnthropic } from '@ai-sdk/anthropic'
+import { createOpenAI } from '@ai-sdk/openai'
+import type { LanguageModel } from 'ai'
+import type { EveConfig } from './config'
+
+/** Builds the Vercel AI SDK language model for the configured provider. */
+export function resolveModel(config: EveConfig): LanguageModel {
+  if (config.provider === 'openai') {
+    const openai = createOpenAI({ apiKey: config.openaiApiKey })
+    return openai(config.openaiModel)
+  }
+  const anthropic = createAnthropic({ apiKey: config.anthropicApiKey })
+  return anthropic(config.anthropicModel)
+}

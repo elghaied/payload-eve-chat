@@ -1,26 +1,24 @@
-# Payload Blank Template
+# Payload + Vercel AI SDK Chat Agent
 
-This template comes configured with the bare minimum to get started on anything you need.
+A working example of an AI chat agent built inside Payload CMS. The agent ("Eve") lives at `/admin/eve`, reads and writes Payload collections over MCP, and streams responses back to the browser using the Vercel AI SDK. Swap between Claude and GPT with a single env-var change.
 
-## Quick start
-
-This template can be deployed directly from our Cloud hosting and it will setup MongoDB and cloud S3 object storage for media.
+See the [AI Chat Agent (Eve)](#ai-chat-agent-eve) section below for architecture details and environment setup.
 
 ## Quick Start - local setup
 
-To spin up this template locally, follow these steps:
+To spin up this project locally, follow these steps:
 
 ### Clone
 
-After you click the `Deploy` button above, you'll want to have standalone copy of this repo on your machine. If you've already cloned this repo, skip to [Development](#development).
+Clone this repo and `cd` into it.
 
 ### Development
 
 1. First [clone the repo](#clone) if you have not done so already
-2. `cd my-project && cp .env.example .env` to copy the example environment variables. You'll need to add the `MONGODB_URL` from your Cloud project to your `.env` if you want to use S3 storage and the MongoDB database that was created for you.
+2. `cd my-project && cp .env.example .env` — fill in `MONGODB_URL`, `PAYLOAD_SECRET`, and the AI provider keys (see [Environment setup](#environment-setup)).
 
 3. `pnpm install && pnpm dev` to install dependencies and start the dev server
-4. open `http://localhost:3000` to open the app in your browser
+4. Open `http://localhost:3000/admin` to log in and create your first admin user, then navigate to **AI Chat Agent (Eve)** in the sidebar (or go to `http://localhost:3000/admin/eve`) to start chatting.
 
 That's it! Changes made in `./src` will be reflected in your app. Follow the on-screen instructions to login and create your first admin user. Then check out [Production](#production) once you're ready to build and serve your app, and [Deployment](#deployment) when you're ready to go live.
 

@@ -25,6 +25,7 @@ export async function createPayloadMcpTools(
   })
 
   try {
+    // Production note: add a request timeout (e.g. via AbortSignal) to client.tools() to avoid hanging on an unresponsive MCP server.
     const tools = await client.tools()
     return { tools, close: () => client.close() }
   } catch (err) {

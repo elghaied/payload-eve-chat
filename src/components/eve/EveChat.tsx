@@ -2,7 +2,7 @@
 import React, { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useChat } from '@ai-sdk/react'
-import { DefaultChatTransport, type DynamicToolUIPart, type UIMessage } from 'ai'
+import { DefaultChatTransport, type UIMessage } from 'ai'
 import {
   Conversation,
   ConversationContent,
@@ -88,23 +88,19 @@ export const EveChat: React.FC<{
                         )
                       }
                       if (part.type === 'dynamic-tool') {
-                        const p = part as DynamicToolUIPart
                         return (
                           <Tool key={`${message.id}-${i}`}>
                             <ToolHeader
                               type="dynamic-tool"
-                              toolName={p.toolName}
-                              state={p.state}
+                              toolName={part.toolName}
+                              state={part.state}
                             />
                             <ToolContent>
-                              <ToolInput input={p.input} />
-                              {'output' in p && (p.output !== undefined || 'errorText' in p) ? (
-                                <ToolOutput
-                                  output={(p as { output?: unknown }).output}
-                                  errorText={
-                                    (p as { errorText?: string }).errorText
-                                  }
-                                />
+                              <ToolInput input={part.input} />
+                              {part.state === 'output-available' ? (
+                                <ToolOutput output={part.output} errorText={undefined} />
+                              ) : part.state === 'output-error' ? (
+                                <ToolOutput output={undefined} errorText={part.errorText} />
                               ) : null}
                             </ToolContent>
                           </Tool>

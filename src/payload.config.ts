@@ -61,7 +61,7 @@ export default buildConfig({
         overrideAuth: async () => ({
           posts: { find: true, create: true, update: true },
           tasks: { find: true, create: true, update: true },
-          user: { collection: 'users', email: 'dev@local', id: 'dev' } as unknown as User,
+          user: { collection: 'users', email: 'dev@local', id: '000000000000000000000000' } as unknown as User,
         }),
       }),
     }),

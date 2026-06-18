@@ -112,7 +112,28 @@ MCP_API_KEY=                     # optional in dev; required in production
 
 ### Switching providers
 
-Set `AI_PROVIDER` to `anthropic` (default) or `openai`, then supply the matching API key. The default models are `claude-sonnet-4-6` and `gpt-4o` respectively; override with `ANTHROPIC_MODEL` or `OPENAI_MODEL`.
+Set `AI_PROVIDER` to `anthropic` (default), `openai`, or `ollama`.
+
+- **`anthropic`** / **`openai`** — supply the matching API key (`ANTHROPIC_API_KEY` / `OPENAI_API_KEY`). Default models are `claude-sonnet-4-6` and `gpt-4o`; override with `ANTHROPIC_MODEL` / `OPENAI_MODEL`.
+- **`ollama`** — run models locally, no API key needed. Set `OLLAMA_MODEL` (default `qwen2.5`) and optionally `OLLAMA_BASE_URL` (default `http://localhost:11434/api`).
+
+#### Running locally with Ollama
+
+The agent operates Posts and Tasks entirely through MCP **tool calls**, so you must use a model that supports tool calling — e.g. `qwen2.5`, `llama3.1`, or `mistral-nemo`. Small non-tool models won't work.
+
+```bash
+ollama pull qwen2.5          # a tool-calling-capable model
+ollama serve                 # ensure Ollama is running on :11434
+```
+
+Then set in `.env`:
+
+```
+AI_PROVIDER=ollama
+OLLAMA_MODEL=qwen2.5
+```
+
+Note: local models are generally weaker at multi-step tool use than the hosted Claude/GPT models, so the agent may need clearer prompts and occasionally mis-call a tool.
 
 ### MCP authentication: dev vs. production
 

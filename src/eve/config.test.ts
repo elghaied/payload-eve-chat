@@ -20,6 +20,23 @@ describe('getEveConfig', () => {
     expect(() => getEveConfig({ AI_PROVIDER: 'openai' })).toThrow(/OPENAI_API_KEY/)
   })
 
+  it('selects ollama without requiring an API key, with default model and base URL', () => {
+    const cfg = getEveConfig({ AI_PROVIDER: 'ollama' })
+    expect(cfg.provider).toBe('ollama')
+    expect(cfg.ollamaModel).toBe('qwen2.5')
+    expect(cfg.ollamaBaseURL).toBe('http://localhost:11434/api')
+  })
+
+  it('honors ollama model and base URL overrides', () => {
+    const cfg = getEveConfig({
+      AI_PROVIDER: 'ollama',
+      OLLAMA_MODEL: 'llama3.1',
+      OLLAMA_BASE_URL: 'http://127.0.0.1:11434/api',
+    })
+    expect(cfg.ollamaModel).toBe('llama3.1')
+    expect(cfg.ollamaBaseURL).toBe('http://127.0.0.1:11434/api')
+  })
+
   it('honors model and mcp overrides', () => {
     const cfg = getEveConfig({
       ANTHROPIC_API_KEY: 'k',

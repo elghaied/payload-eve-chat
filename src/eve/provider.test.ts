@@ -11,6 +11,8 @@ const base: EveConfig = {
   anthropicApiKey: 'k',
   anthropicModel: 'claude-sonnet-4-6',
   openaiModel: 'gpt-4o',
+  ollamaModel: 'qwen2.5',
+  ollamaBaseURL: 'http://localhost:11434/api',
   mcpServerUrl: 'http://localhost:3000/api/mcp',
 }
 
@@ -25,5 +27,11 @@ describe('resolveModel', () => {
     const model = resolveModel({ ...base, provider: 'openai', openaiApiKey: 'k' }) as unknown as ModelInspect
     expect(model.provider).toContain('openai')
     expect(model.modelId).toBe('gpt-4o')
+  })
+
+  it('returns an ollama model when provider is ollama', () => {
+    const model = resolveModel({ ...base, provider: 'ollama' }) as unknown as ModelInspect
+    expect(model.provider).toContain('ollama')
+    expect(model.modelId).toBe('qwen2.5')
   })
 })

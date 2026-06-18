@@ -48,6 +48,7 @@
     "motion": "^12.40.0",
     "nanoid": "^5.1.14",
     "next": "16.2.6",
+    "ollama-ai-provider-v2": "^3.6.0",
     "payload": "3.85.1",
     "radix-ui": "^1.6.0",
     "react": "19.2.6",

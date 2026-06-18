@@ -50,7 +50,12 @@ export const EveView: React.FC<AdminViewServerProps> = async ({
       visibleEntities={visibleEntities}
     >
       {user ? (
+        // Key by the active conversation so switching threads (or starting a new
+        // chat) remounts EveChat — re-seeding useChat with the selected thread's
+        // messages. Without this, the client keeps its mount-time state and the
+        // wrong (or empty) thread is shown.
         <EveChat
+          key={activeId ?? 'new'}
           initialMessages={initialMessages}
           conversations={conversations.map((c) => ({ id: String(c.id), title: c.title ?? 'Untitled' }))}
           activeId={activeId}

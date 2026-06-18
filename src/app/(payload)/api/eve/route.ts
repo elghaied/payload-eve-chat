@@ -70,7 +70,10 @@ export async function POST(req: Request): Promise<Response> {
   return result.toUIMessageStreamResponse({
     originalMessages: messages,
     onFinish: ({ messages: finalMessages }) => {
-      void saveMessages(payload, String(conversation!.id), finalMessages, typedUser)
+      // Drop content-less messages (e.g. an empty assistant shell from a run that
+      // errored before producing output) so a failed turn never poisons the thread.
+      const persistable = finalMessages.filter((m) => (m.parts?.length ?? 0) > 0)
+      void saveMessages(payload, String(conversation!.id), persistable, typedUser)
     },
   })
 }

@@ -76,20 +76,24 @@ export const EveChat: React.FC<{
                 description="Ask Eve to create a post or manage your tasks."
               />
             ) : (
-              messages.map((message) => (
-                <Message from={message.role} key={message.id}>
+              messages.map((message, index) => {
+                // Fall back to the index when a message has no id (e.g. a rehydrated
+                // record from an older save) so React keys stay unique.
+                const messageKey = message.id || `message-${index}`
+                return (
+                <Message from={message.role} key={messageKey}>
                   <MessageContent>
                     {message.parts.map((part, i) => {
                       if (part.type === 'text') {
                         return (
-                          <MessageResponse key={`${message.id}-${i}`}>
+                          <MessageResponse key={`${messageKey}-${i}`}>
                             {part.text}
                           </MessageResponse>
                         )
                       }
                       if (part.type === 'dynamic-tool') {
                         return (
-                          <Tool key={`${message.id}-${i}`}>
+                          <Tool key={`${messageKey}-${i}`}>
                             <ToolHeader
                               type="dynamic-tool"
                               toolName={part.toolName}
@@ -110,7 +114,8 @@ export const EveChat: React.FC<{
                     })}
                   </MessageContent>
                 </Message>
-              ))
+                )
+              })
             )}
           </ConversationContent>
           <ConversationScrollButton />

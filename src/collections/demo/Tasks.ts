@@ -5,7 +5,13 @@ import type { CollectionConfig } from 'payload'
  */
 export const Tasks: CollectionConfig = {
   slug: 'tasks',
-  // Demo collection — any signed-in user may manage these (the agent operates them via MCP).
+  // Access: any signed-in user may manage these. This is a DELIBERATE choice for a
+  // single-admin demo — multi-tenancy / per-user ownership is intentionally out of scope.
+  //
+  // For a real multi-user app, add an indexed `user` relationship (defaulted to
+  // `req.user.id` in a beforeChange hook, with field-level update access locked) and scope
+  // read/update/delete to `{ user: { equals: req.user.id } }` — see the `ownConversations`
+  // pattern in src/collections/Conversations.ts.
   access: {
     read: ({ req }) => Boolean(req.user),
     create: ({ req }) => Boolean(req.user),

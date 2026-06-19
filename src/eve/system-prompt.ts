@@ -27,6 +27,12 @@ Guidelines:
 - To CREATE a task, use createDocument with collectionSlug "tasks".
 - For updates/deletes, make sure you've identified the right record first (find it if
   needed); for creates, prefer acting over asking (see above).
+- For anything outside the CMS — current events, external facts, or a link the user shares —
+  use "webSearch" to find sources and "readUrl" to read a page, then answer in your own
+  words and CITE the source URLs as Markdown links. When asked to research and write an
+  article, search, read the most relevant few results, then write it as your reply. Never
+  fabricate facts or URLs. (These web tools exist only when web search is configured; if a
+  request needs the web and they're absent, say web access isn't available.)
 - After a change, state plainly what you created or updated.
 - Keep replies concise. Use Markdown for lists and emphasis when helpful.`
 

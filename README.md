@@ -123,19 +123,24 @@ Set `AI_PROVIDER` to `anthropic` (default), `openai`, or `ollama`.
 
 #### Running locally with Ollama
 
-The agent operates Posts and Tasks entirely through MCP **tool calls**, so you must use a model that supports tool calling — e.g. `qwen2.5`, `llama3.1`, or `mistral-nemo`. Small non-tool models won't work.
+The agent operates Posts and Tasks entirely through MCP **tool calls**, so you must use a model that supports tool calling — e.g. `qwen3:4b`, `qwen2.5`, `llama3.1`, or `mistral-nemo`. Small non-tool models won't work.
+
+Ollama runs as a **Docker service** (GPU, port `11434`) that **auto-pulls `OLLAMA_MODEL` on
+first start** — no host install needed. Models persist in `./models/ollama/` (see [Models](#models)):
 
 ```bash
-ollama pull qwen2.5          # a tool-calling-capable model
-ollama serve                 # ensure Ollama is running on :11434
+docker compose --profile ollama up -d ollama   # or --profile full for the whole stack
 ```
 
 Then set in `.env`:
 
 ```
 AI_PROVIDER=ollama
-OLLAMA_MODEL=qwen2.5
+OLLAMA_MODEL=qwen3:4b
 ```
+
+(Prefer an Ollama already running on your host? Skip the service and leave `OLLAMA_BASE_URL`
+pointing at `http://localhost:11434/api`.)
 
 Note: local models are generally weaker at multi-step tool use than the hosted Claude/GPT models, so the agent may need clearer prompts and occasionally mis-call a tool.
 
@@ -158,26 +163,30 @@ set. Set neither for chat-only; set one or both to enable that capability. With
 nothing attached, the mic button still appears but clicking it just explains that
 no speech service is connected.
 
-### Running the speech services
+### Running the services
 
-Two OpenAI-compatible Docker services back voice, behind a compose `voice`
-profile so they only start when asked:
+The backend runs as Docker services (GPU): **STT** (`speaches`, `:8000`), **TTS**
+(`kokoro-fastapi`, `:8880`), and the optional **Ollama** LLM (`:11434`). They're
+grouped by compose profile so you bring up only what you need:
 
-- **STT** — `ghcr.io/speaches-ai/speaches` (faster-whisper) on `:8000`
-- **TTS** — `ghcr.io/remsky/kokoro-fastapi` (Kokoro) on `:8880`
+| Profile | Services |
+|---|---|
+| _(none)_ | `mongo` — always starts |
+| `voice` | `stt` + `tts` |
+| `ollama` | `ollama` |
+| `full` | `ollama` + `stt` + `tts` (everything for local dev) |
+| `app` | `payload` — the app in Docker (advanced; see below) |
 
-The recommended setup runs the **app on your host** (`pnpm dev`) and uses Docker
-only for the speech services, so the `localhost` URLs below resolve directly:
+The recommended setup runs the **app on your host** and the backend in Docker, so the
+`localhost` URLs in `.env` resolve directly:
 
-    # start only the speech services (and mongo, if you don't run it on the host)
-    docker compose --profile voice up -d mongo stt tts
-    pnpm dev
+    docker compose --profile full up -d    # mongo + ollama + stt + tts
+    pnpm dev                               # app on the host
 
-Name the services explicitly as shown — a bare `docker compose up` also starts the
-`payload` container, which runs the app *inside* Docker where `localhost` no longer
-points at your host (Ollama, Mongo, stt/tts). Use the in-container `payload` service
-only if you switch the `.env` hostnames to the compose service names (`mongo`,
-`stt`, `tts`) and point Ollama at `host.docker.internal`.
+A bare `docker compose up` starts only `mongo` — the app is behind the `app` profile
+because the recommended workflow runs it on the host. To run the app in Docker too,
+enable `--profile app` **and** switch the `.env` hostnames to the compose service names
+(`mongo`, `ollama`, `stt`, `tts`), since in-container `localhost` no longer reaches your host.
 
 #### Models
 
@@ -194,9 +203,11 @@ portable — **copy a folder to another machine and the app skips the download.*
   model, set `STT_MODEL` in `.env`, pull that id the same way, and restart.
 - **TTS** → nothing to download. The Kokoro model is **baked into the
   `kokoro-fastapi` image**, so there's no `./models/tts/` folder.
+- **Ollama** → `./models/ollama/`. The `ollama` service **auto-pulls `OLLAMA_MODEL`**
+  here on first start (runs as your user, so the files aren't root-owned).
 
-Already have the models from another machine? Just drop the folder into
-`./models/stt/` before `docker compose --profile voice up` — no download needed.
+Already have the models from another machine? Drop the folders into `./models/stt/`
+and/or `./models/ollama/` before `docker compose --profile full up` — no download needed.
 
 Sanity-check both services:
 

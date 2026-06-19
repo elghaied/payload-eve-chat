@@ -1,6 +1,11 @@
 services:
+  # The app itself. Behind the `app` profile because the recommended workflow runs
+  # it on the host (`pnpm dev`) where localhost reaches the other services; only
+  # enable this for a fully-containerized run (then switch .env hosts to service
+  # names: mongo / ollama / stt / tts).
   payload:
     image: node:24-alpine
+    profiles: ['app']
     ports:
       - '3000:3000'
     volumes:
@@ -30,7 +35,7 @@ services:
     image: ghcr.io/speaches-ai/speaches:latest-cuda
     # No GPU? Swap to the CPU image and delete the `deploy:` block below:
     #   image: ghcr.io/speaches-ai/speaches:latest-cpu
-    profiles: ['voice']
+    profiles: ['voice', 'full']
     ports:
       - '8000:8000'
     volumes:
@@ -49,10 +54,40 @@ services:
     image: ghcr.io/remsky/kokoro-fastapi-gpu:latest
     # No GPU? Swap to the CPU image and delete the `deploy:` block below:
     #   image: ghcr.io/remsky/kokoro-fastapi-cpu:latest
-    profiles: ['voice']
+    profiles: ['voice', 'full']
     ports:
       - '8880:8880'
     # The Kokoro model is baked into the image — no model folder/download needed.
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  # Local LLM for AI_PROVIDER=ollama. Serves on :11434 and auto-pulls OLLAMA_MODEL
+  # on first start. Runs as the host user with models under ./models/ollama so the
+  # weights are portable and not root-owned.
+  ollama:
+    image: ollama/ollama:latest
+    profiles: ['ollama', 'full']
+    user: '1000:1000'
+    environment:
+      - HOME=/tmp
+      - OLLAMA_MODELS=/models
+    ports:
+      - '11434:11434'
+    volumes:
+      - ./models/ollama:/models
+    entrypoint: ['/bin/sh', '-c']
+    command:
+      - |
+        ollama serve &
+        pid=$$!
+        until ollama list >/dev/null 2>&1; do sleep 1; done
+        ollama pull ${OLLAMA_MODEL:-qwen3:4b} || true
+        wait $$pid
     deploy:
       resources:
         reservations:

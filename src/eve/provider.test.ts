@@ -14,6 +14,10 @@ const base: EveConfig = {
   ollamaModel: 'qwen2.5',
   ollamaBaseURL: 'http://localhost:11434/api',
   mcpServerUrl: 'http://localhost:3000/api/mcp',
+  sttModel: 'm',
+  ttsModel: 'm',
+  ttsVoice: 'v',
+  ttsFormat: 'mp3',
 }
 
 describe('resolveModel', () => {

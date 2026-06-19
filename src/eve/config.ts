@@ -10,6 +10,14 @@ export type EveConfig = {
   ollamaBaseURL: string
   mcpServerUrl: string
   mcpApiKey?: string
+  sttBaseURL?: string
+  sttModel: string
+  sttApiKey?: string
+  ttsBaseURL?: string
+  ttsModel: string
+  ttsVoice: string
+  ttsFormat: string
+  ttsApiKey?: string
 }
 
 type Env = Record<string, string | undefined>
@@ -21,6 +29,10 @@ const DEFAULT_OPENAI_MODEL = 'gpt-4o'
 const DEFAULT_OLLAMA_MODEL = 'qwen2.5'
 const DEFAULT_OLLAMA_BASE_URL = 'http://localhost:11434/api'
 const DEFAULT_MCP_SERVER_URL = 'http://localhost:3000/api/mcp'
+const DEFAULT_STT_MODEL = 'Systran/faster-whisper-small'
+const DEFAULT_TTS_MODEL = 'kokoro'
+const DEFAULT_TTS_VOICE = 'af_sky'
+const DEFAULT_TTS_FORMAT = 'mp3'
 
 const PROVIDERS: readonly EveProvider[] = ['anthropic', 'openai', 'ollama']
 
@@ -44,6 +56,14 @@ export function getEveConfig(env: Env = process.env): EveConfig {
     ollamaBaseURL: env.OLLAMA_BASE_URL || DEFAULT_OLLAMA_BASE_URL,
     mcpServerUrl: env.MCP_SERVER_URL || DEFAULT_MCP_SERVER_URL,
     mcpApiKey: env.MCP_API_KEY,
+    sttBaseURL: env.STT_BASE_URL,
+    sttModel: env.STT_MODEL || DEFAULT_STT_MODEL,
+    sttApiKey: env.STT_API_KEY,
+    ttsBaseURL: env.TTS_BASE_URL,
+    ttsModel: env.TTS_MODEL || DEFAULT_TTS_MODEL,
+    ttsVoice: env.TTS_VOICE || DEFAULT_TTS_VOICE,
+    ttsFormat: env.TTS_FORMAT || DEFAULT_TTS_FORMAT,
+    ttsApiKey: env.TTS_API_KEY,
   }
 
   if (provider === 'anthropic' && !config.anthropicApiKey) {

@@ -37,6 +37,10 @@ export const EveView: React.FC<AdminViewServerProps> = async ({
   const active = user && activeId ? await loadConversation(req.payload, activeId, user) : null
   const initialMessages = (active?.messages as UIMessage[] | undefined) ?? []
 
+  // Server-only: derive voice availability from env presence without leaking URLs/keys.
+  const sttAvailable = Boolean(process.env.STT_BASE_URL)
+  const ttsAvailable = Boolean(process.env.TTS_BASE_URL)
+
   return (
     <DefaultTemplate
       i18n={req.i18n}
@@ -59,6 +63,8 @@ export const EveView: React.FC<AdminViewServerProps> = async ({
           initialMessages={initialMessages}
           conversations={conversations.map((c) => ({ id: String(c.id), title: c.title ?? 'Untitled' }))}
           activeId={activeId}
+          sttAvailable={sttAvailable}
+          ttsAvailable={ttsAvailable}
         />
       ) : (
         <Gutter>

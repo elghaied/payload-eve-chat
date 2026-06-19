@@ -12,14 +12,18 @@ import {
 import { Message, MessageContent, MessageResponse } from '@/components/ai-elements/message'
 import {
   PromptInput,
+  PromptInputButton,
   PromptInputFooter,
   type PromptInputMessage,
   PromptInputSubmit,
   PromptInputTextarea,
+  PromptInputTools,
 } from '@/components/ai-elements/prompt-input'
 import { Tool, ToolContent, ToolHeader, ToolInput, ToolOutput } from '@/components/ai-elements/tool'
 import { Reasoning } from '@/components/ai-elements/reasoning'
 import { ConversationSidebar, type ConversationSummary } from './ConversationSidebar'
+import { useVoice } from './useVoice'
+import { MicIcon, PhoneOffIcon } from 'lucide-react'
 import './eve.css'
 
 export { type ConversationSummary }
@@ -28,7 +32,9 @@ export const EveChat: React.FC<{
   initialMessages: UIMessage[]
   conversations: ConversationSummary[]
   activeId?: string
-}> = ({ initialMessages, conversations, activeId }) => {
+  sttAvailable?: boolean
+  ttsAvailable?: boolean
+}> = ({ initialMessages, conversations, activeId, sttAvailable = false, ttsAvailable = false }) => {
   const router = useRouter()
   // The conversation this chat persists to. Starts from the URL; for a brand-new
   // chat it's undefined until the server creates one and we adopt the returned id.
@@ -72,6 +78,27 @@ export const EveChat: React.FC<{
         )
       }
     },
+  })
+
+  // Latest assistant message text (concatenated text parts) drives sentence-streamed TTS.
+  const assistantText = (() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role === 'assistant') {
+        return messages[i].parts
+          .filter((p) => p.type === 'text')
+          .map((p) => (p as { text: string }).text)
+          .join('')
+      }
+    }
+    return undefined
+  })()
+
+  const voice = useVoice({
+    sttAvailable,
+    ttsAvailable,
+    status,
+    assistantText,
+    onTranscript: (text) => sendMessage({ text }, { body: { conversationId } }),
   })
 
   const handleSubmit = (message: PromptInputMessage) => {
@@ -169,11 +196,20 @@ export const EveChat: React.FC<{
             placeholder="Message Eve…"
             onChange={(e) => setInput(e.currentTarget.value)}
           />
-          <PromptInputFooter className="justify-end">
+          <PromptInputFooter>
+            <PromptInputTools>
+              <PromptInputButton
+                onClick={() => (voice.active ? voice.stop() : void voice.start())}
+                variant={voice.active ? 'default' : 'ghost'}
+                tooltip={voice.active ? `Voice: ${voice.state} (click to stop)` : 'Start voice chat'}
+                aria-label={voice.active ? 'Stop voice chat' : 'Start voice chat'}
+              >
+                {voice.active ? <PhoneOffIcon className="size-4" /> : <MicIcon className="size-4" />}
+              </PromptInputButton>
+            </PromptInputTools>
             <PromptInputSubmit
               status={status}
               onStop={stop}
-              // Enabled while generating (acts as Stop); otherwise needs input text.
               disabled={status !== 'streaming' && status !== 'submitted' && !input.trim()}
             />
           </PromptInputFooter>

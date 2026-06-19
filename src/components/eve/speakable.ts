@@ -31,3 +31,17 @@ export function stripSpeak(text: string): string {
   const after = close === -1 ? '' : text.slice(close + CLOSE.length)
   return (before + after).trim()
 }
+
+/**
+ * Strip content the TTS shouldn't read aloud — emoji and pictographs (incl. flag
+ * pairs, variation selectors, and ZWJ joiners) — then collapse the gaps. Returns
+ * '' when nothing speakable remains (caller should skip synthesizing).
+ */
+export function stripForSpeech(text: string): string {
+  return text
+    .replace(/[\p{Extended_Pictographic}\p{Emoji_Presentation}]/gu, '')
+    .replace(/[\u{1F1E6}-\u{1F1FF}]/gu, '') // regional indicators (flag halves)
+    .replace(/[︀-️‍]/gu, '') // variation selectors + zero-width joiner
+    .replace(/\s{2,}/g, ' ')
+    .trim()
+}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { extractSpeak, stripSpeak } from './speakable'
+import { extractSpeak, stripForSpeech, stripSpeak } from './speakable'
 
 describe('extractSpeak', () => {
   it('returns null before any <speak> tag appears', () => {
@@ -38,5 +38,27 @@ describe('stripSpeak', () => {
 
   it('preserves text before an (unclosed) block', () => {
     expect(stripSpeak('Intro. <speak>summary')).toBe('Intro.')
+  })
+})
+
+describe('stripForSpeech', () => {
+  it('removes emoji and collapses the gap', () => {
+    expect(stripForSpeech('Done! 🚀 Created the post.')).toBe('Done! Created the post.')
+  })
+
+  it('trims a trailing emoji', () => {
+    expect(stripForSpeech('All set ✅')).toBe('All set')
+  })
+
+  it('removes flag emoji (regional indicator pairs)', () => {
+    expect(stripForSpeech('Ship it 🇺🇸 today')).toBe('Ship it today')
+  })
+
+  it('returns empty when only emoji remain', () => {
+    expect(stripForSpeech('🎉🎉')).toBe('')
+  })
+
+  it('leaves plain text unchanged', () => {
+    expect(stripForSpeech('Just a normal sentence.')).toBe('Just a normal sentence.')
   })
 })

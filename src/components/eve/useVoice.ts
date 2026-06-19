@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from '@payloadcms/ui'
 import { createSentenceStreamer } from './sentenceStreamer'
-import { extractSpeak } from './speakable'
+import { extractSpeak, stripForSpeech } from './speakable'
 import { encodeWav } from './wav'
 
 // @ricky0123/vad-web needs to fetch its worklet + Silero ONNX model and the
@@ -46,6 +46,11 @@ export function useVoice({
   // Tracks which assistant message the streamer is currently consuming, so a new
   // turn (voice or text) resets the streamer instead of applying a stale cursor.
   const lastAssistantIdRef = useRef<string | undefined>(undefined)
+  // Live mirror of the latest assistant message id (for use in start()).
+  const assistantMessageIdRef = useRef<string | undefined>(undefined)
+  // The assistant message that already existed when voice was turned on — never
+  // spoken, so activating voice doesn't read back the prior reply.
+  const baselineAssistantIdRef = useRef<string | undefined>(undefined)
   const queueRef = useRef<HTMLAudioElement[]>([])
   const playingRef = useRef(false)
   // Strict FIFO speak pipeline: at most one /speak fetch in flight at a time.
@@ -82,6 +87,11 @@ export function useVoice({
   // Keep the ref in sync after every render (safe; refs are write-any-time).
   useEffect(() => {
     playNextRef.current = playNext
+  })
+
+  // Mirror the latest assistant message id so start() can baseline it.
+  useEffect(() => {
+    assistantMessageIdRef.current = assistantMessageId
   })
 
   const clearPlayback = useCallback(() => {
@@ -138,7 +148,10 @@ export function useVoice({
 
   const enqueueSpeak = useCallback(
     (sentence: string) => {
-      pendingSpeakRef.current.push(sentence)
+      // Don't read emoji/pictographs aloud; skip if nothing speakable remains.
+      const cleaned = stripForSpeech(sentence)
+      if (!cleaned) return
+      pendingSpeakRef.current.push(cleaned)
       pumpSpeak()
     },
     [pumpSpeak],
@@ -185,6 +198,8 @@ export function useVoice({
   // not voiced.
   useEffect(() => {
     if (!active || !ttsAvailable || !assistantText) return
+    // Never speak the reply that already existed when voice was turned on.
+    if (assistantMessageId === baselineAssistantIdRef.current) return
     // A new assistant turn (id change) means the streamer's consumed cursor is
     // stale for this different string — reset before pushing the new text.
     if (assistantMessageId !== lastAssistantIdRef.current) {
@@ -202,6 +217,8 @@ export function useVoice({
   // never silent.
   useEffect(() => {
     if (!active || !ttsAvailable) return
+    // Never speak the reply that already existed when voice was turned on.
+    if (assistantMessageId === baselineAssistantIdRef.current) return
     if (status === 'streaming' || status === 'submitted') return
     const text = assistantText ?? ''
     if (extractSpeak(text) !== null) {
@@ -210,7 +227,7 @@ export function useVoice({
       for (const sentence of streamerRef.current.push(text)) enqueueSpeak(sentence)
       for (const sentence of streamerRef.current.flush()) enqueueSpeak(sentence)
     }
-  }, [status, assistantText, active, ttsAvailable, enqueueSpeak])
+  }, [status, assistantText, assistantMessageId, active, ttsAvailable, enqueueSpeak])
 
   const start = useCallback(async () => {
     // Guard: a hands-free loop needs speech input.
@@ -221,6 +238,9 @@ export function useVoice({
     if (!ttsAvailable) {
       toast.info("No text-to-speech attached — Eve's replies won't be spoken.")
     }
+    // Baseline the reply that's already on screen so turning voice on doesn't
+    // read it back; only turns that arrive after this point are spoken.
+    baselineAssistantIdRef.current = assistantMessageIdRef.current
     try {
       const { MicVAD } = await import('@ricky0123/vad-web')
       const vad = await MicVAD.new({

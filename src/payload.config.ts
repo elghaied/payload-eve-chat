@@ -11,6 +11,7 @@ import { Media } from './collections/Media'
 import { Posts } from './collections/demo/Posts'
 import { Tasks } from './collections/demo/Tasks'
 import { Conversations } from './collections/Conversations'
+import { createPostTool } from './eve/post-tool'
 
 const filename = fileURLToPath(import.meta.url)
 const dirname = path.dirname(filename)
@@ -50,8 +51,10 @@ export default buildConfig({
       collections: {
         posts: {
           description:
-            'Blog posts. Use find to list/read, create to add, update to edit. Fields: title, content, status (draft|published), author.',
-          tools: { delete: false },
+            'Blog posts. Use findDocuments to list/read and updateDocument to edit. To CREATE a post, use the dedicated createPost tool (it accepts Markdown for the body). Fields: title, content (rich text), status (draft|published), author.',
+          // Generic create is disabled: the content field is rich text (Lexical),
+          // so posts are created via the createPost tool, which accepts Markdown.
+          tools: { create: false, delete: false },
         },
         tasks: {
           description:
@@ -68,6 +71,11 @@ export default buildConfig({
         conversations: {
           tools: { find: false, create: false, update: false, delete: false, getCollectionSchema: false },
         },
+      },
+      // Cross-cutting custom tools. createPost converts Markdown -> Lexical so the
+      // agent can write rich text post bodies as plain Markdown.
+      tools: {
+        createPost: createPostTool,
       },
       // In development, bypass API key auth so the endpoint is reachable without
       // credentials. Grant exactly the items the plugin registered (i.e. the enabled

@@ -9,6 +9,16 @@ describe('isPrivateIp', () => {
   it('allows public IPv4', () => {
     for (const ip of ['8.8.8.8', '1.1.1.1', '93.184.216.34']) expect(isPrivateIp(ip)).toBe(false)
   })
+  it('flags additional reserved IPv4 ranges', () => {
+    expect(isPrivateIp('100.64.0.1')).toBe(true) // CGNAT 100.64.0.0/10
+    expect(isPrivateIp('198.18.0.1')).toBe(true) // benchmarking 198.18.0.0/15
+    expect(isPrivateIp('198.19.255.255')).toBe(true) // benchmarking upper bound
+    expect(isPrivateIp('255.255.255.255')).toBe(true) // broadcast
+  })
+  it('allows IPs just outside reserved ranges', () => {
+    expect(isPrivateIp('100.63.255.255')).toBe(false) // just below CGNAT
+    expect(isPrivateIp('100.128.0.1')).toBe(false) // just above CGNAT
+  })
   it('flags IPv6 loopback/ULA/link-local', () => {
     for (const ip of ['::1', 'fe80::1', 'fc00::1', 'fd12::1']) expect(isPrivateIp(ip)).toBe(true)
   })

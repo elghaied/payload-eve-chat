@@ -8,14 +8,18 @@ export function isPrivateIp(ip: string): boolean {
   const version = net.isIP(ip)
   if (version === 4) {
     const parts = ip.split('.').map(Number)
-    const [a, b] = parts
+    const [a, b, c, d] = parts
     return (
       a === 0 ||
       a === 127 ||
       a === 10 ||
       (a === 169 && b === 254) ||
       (a === 172 && b >= 16 && b <= 31) ||
-      (a === 192 && b === 168)
+      (a === 192 && b === 168) ||
+      (a === 100 && b >= 64 && b <= 127) || // 100.64.0.0/10 CGNAT
+      (a === 192 && b === 0 && c === 0) || // 192.0.0.0/24
+      (a === 198 && (b === 18 || b === 19)) || // 198.18.0.0/15 benchmarking
+      (a === 255 && b === 255 && c === 255 && d === 255) // 255.255.255.255 broadcast
     )
   }
   if (version === 6) {
@@ -51,7 +55,15 @@ export function parseFetchableUrl(raw: string): URL {
   return url
 }
 
-/** parseFetchableUrl + DNS resolution check (defends against public names → internal IPs). */
+/**
+ * parseFetchableUrl + DNS resolution check (defends against public names → internal IPs).
+ *
+ * DNS-rebinding / TOCTOU note: this validates the DNS-resolved IPs at call time, but
+ * `fetch` later resolves DNS independently. A hostile resolver could rebind between
+ * this check and the actual fetch (validate-then-fetch TOCTOU). This is accepted for
+ * this server-side, authenticated-admin, opt-in feature. A tight fix would pin the
+ * validated IP and connect to it directly (bypassing the second DNS lookup entirely).
+ */
 export async function assertFetchableUrl(raw: string): Promise<URL> {
   const url = parseFetchableUrl(raw)
   if (net.isIP(url.hostname)) return url // literal already checked

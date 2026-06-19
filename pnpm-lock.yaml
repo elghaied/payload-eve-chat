@@ -20,6 +20,9 @@ importers:
       '@ai-sdk/react':
         specifier: ^3.0.210
         version: 3.0.210(react@19.2.6)(zod@4.4.3)
+      '@mozilla/readability':
+        specifier: ^0.6.0
+        version: 0.6.0
       '@payloadcms/db-mongodb':
         specifier: canary
         version: 4.0.0-canary.3(payload@4.0.0-canary.3(graphql@16.14.2)(typescript@6.0.3))
@@ -86,6 +89,9 @@ importers:
       graphql:
         specifier: ^16.8.1
         version: 16.14.2
+      jsdom:
+        specifier: 28.0.0
+        version: 28.0.0(@noble/hashes@1.8.0)
       lucide-react:
         specifier: ^1.21.0
         version: 1.21.0(react@19.2.6)
@@ -177,9 +183,6 @@ importers:
       eslint-config-next:
         specifier: 16.2.6
         version: 16.2.6(@typescript-eslint/parser@8.61.1(eslint@9.39.4(jiti@2.7.0))(typescript@6.0.3))(eslint@9.39.4(jiti@2.7.0))(typescript@6.0.3)
-      jsdom:
-        specifier: 28.0.0
-        version: 28.0.0(@noble/hashes@1.8.0)
       postcss:
         specifier: ^8.5.15
         version: 8.5.15
@@ -1396,6 +1399,10 @@ packages:
 
   '@mongodb-js/saslprep@1.4.11':
     resolution: {integrity: sha512-o9rAHc0IpIjuPSxRutWpE1F62x7n+4mVS4rCNHkzhIUMQcc18bb6xEq5wd2NdN0WjepIyXIppRshYI2kQDOZVA==}
+
+  '@mozilla/readability@0.6.0':
+    resolution: {integrity: sha512-juG5VWh4qAivzTAeMzvY9xs9HY5rAcr2E4I7tiSSCokRFi7XIZCAu92ZkSTsIj1OPceCifL3cpfteP3pDT9/QQ==}
+    engines: {node: '>=14.0.0'}
 
   '@napi-rs/wasm-runtime@1.1.5':
     resolution: {integrity: sha512-AWPoBRJ9tsnVhor4sjO7rkni+7p+2IAEFj6cx06UgP10jkQHqay/36uRV/bFkgrh18D9vb4cr8Q0Pthskgzy+Q==}
@@ -8224,6 +8231,8 @@ snapshots:
   '@mongodb-js/saslprep@1.4.11':
     dependencies:
       sparse-bitfield: 3.0.3
+
+  '@mozilla/readability@0.6.0': {}
 
   '@napi-rs/wasm-runtime@1.1.5(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0)':
     dependencies:

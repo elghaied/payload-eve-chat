@@ -4,6 +4,7 @@ import config from '@payload-config'
 import { getEveConfig } from '@/eve/config'
 import { resolveModel } from '@/eve/provider'
 import { createPayloadMcpTools } from '@/eve/mcp-client'
+import { proposePost } from '@/eve/propose-tool'
 import { EVE_SYSTEM_PROMPT, VOICE_REPLY_INSTRUCTION } from '@/eve/system-prompt'
 import { createConversation, loadConversation, saveMessages } from '@/eve/conversations'
 
@@ -53,7 +54,8 @@ export async function POST(req: Request): Promise<Response> {
     conversation = await createConversation(payload, typedUser, firstUserText.slice(0, 80))
   }
 
-  const { tools, close } = await createPayloadMcpTools(eveConfig)
+  const { tools: mcpTools, close } = await createPayloadMcpTools(eveConfig)
+  const tools = { ...mcpTools, proposePost }
 
   const modelMessages = await convertToModelMessages(messages)
 

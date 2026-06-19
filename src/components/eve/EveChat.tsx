@@ -1,5 +1,5 @@
 'use client'
-import React, { useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { useRouter } from '@payloadcms/ui'
 import { useChat } from '@ai-sdk/react'
 import { DefaultChatTransport, type UIMessage } from 'ai'
@@ -22,6 +22,8 @@ import {
 import { Tool, ToolContent, ToolHeader, ToolInput, ToolOutput } from '@/components/ai-elements/tool'
 import { Reasoning } from '@/components/ai-elements/reasoning'
 import { ConversationSidebar, type ConversationSummary } from './ConversationSidebar'
+import { PostPreviewPanel } from './PostPreviewPanel'
+import { buildApprovalMessage, type PostDraft } from '@/eve/approval-message'
 import { useVoice } from './useVoice'
 import { stripSpeak } from './speakable'
 import { TooltipProvider } from '@/components/ui/tooltip'
@@ -100,6 +102,48 @@ export const EveChat: React.FC<{
     return { assistantText: undefined, assistantMessageId: undefined }
   })()
 
+  // The post draft currently shown in the side panel (from a proposePost tool part).
+  const [activeDraft, setActiveDraft] = useState<{ id: string; draft: PostDraft } | null>(null)
+  // The proposePost call id we've already surfaced, so re-renders don't reopen it
+  // after the user closes the panel.
+  const handledProposeIdRef = useRef<string | undefined>(undefined)
+
+  // Open the panel when the agent proposes a post.
+  // Only act on a terminal part state so we never open with partial/streaming input.
+  useEffect(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const m = messages[i]
+      if (m.role !== 'assistant') continue
+      for (let j = m.parts.length - 1; j >= 0; j--) {
+        const p = m.parts[j] as {
+          type: string
+          state?: string
+          toolCallId?: string
+          input?: unknown
+          output?: unknown
+        }
+        if (p.type !== 'tool-proposePost') continue
+        // If the part is still streaming/pending, wait — don't set the ref yet.
+        if (p.state !== 'output-available' && p.state !== 'input-available') return
+        // Completed tool parts always have a toolCallId; skip if absent.
+        const id = p.toolCallId
+        if (!id) return
+        const draft = (p.output ?? p.input) as PostDraft | undefined
+        if (draft && id !== handledProposeIdRef.current) {
+          handledProposeIdRef.current = id
+          setActiveDraft({ id, draft })
+        }
+        return
+      }
+    }
+  }, [messages])
+
+  const handleApprovePost = (final: PostDraft) => {
+    // Re-engage the agent to create the post via MCP, using the approved content.
+    sendMessage({ text: buildApprovalMessage(final) }, { body: { conversationId } })
+    setActiveDraft(null)
+  }
+
   const voice = useVoice({
     sttAvailable,
     ttsAvailable,
@@ -170,6 +214,36 @@ export const EveChat: React.FC<{
                           </MessageResponse>
                         )
                       }
+                      if (part.type === 'tool-proposePost') {
+                        const tp = part as {
+                          state?: string
+                          toolCallId?: string
+                          input?: unknown
+                          output?: unknown
+                        }
+                        // Only render the affordance once the part is at a terminal state
+                        // and has a stable toolCallId, matching the open-effect guard.
+                        if (
+                          (tp.state !== 'output-available' && tp.state !== 'input-available') ||
+                          !tp.toolCallId
+                        ) {
+                          return null
+                        }
+                        const id = tp.toolCallId
+                        const draft = (tp.output ?? tp.input) as PostDraft | undefined
+                        return (
+                          <button
+                            className="text-left text-muted-foreground text-sm underline-offset-2 hover:text-foreground hover:underline"
+                            key={`${messageKey}-${i}`}
+                            onClick={() =>
+                              draft && setActiveDraft({ id, draft })
+                            }
+                            type="button"
+                          >
+                            📝 Drafted a post{draft?.title ? ` — "${draft.title}"` : ''} — review it →
+                          </button>
+                        )
+                      }
                       if (part.type === 'dynamic-tool') {
                         return (
                           <Tool key={`${messageKey}-${i}`}>
@@ -226,6 +300,14 @@ export const EveChat: React.FC<{
           </PromptInputFooter>
         </PromptInput>
       </div>
+      {activeDraft && (
+        <PostPreviewPanel
+          key={activeDraft.id}
+          draft={activeDraft.draft}
+          onApprove={handleApprovePost}
+          onClose={() => setActiveDraft(null)}
+        />
+      )}
     </div>
     </TooltipProvider>
   )

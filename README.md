@@ -153,6 +153,15 @@ In **development**, the `/api/mcp` endpoint requires no API key — the config r
 
 In **production**, the MCP endpoint is protected by a Bearer API key. In Payload v4, MCP API keys are managed from the user menu under **Settings → Manage API keys** (they are no longer a standalone auth collection in the main nav). Create a key there, then set it as `MCP_API_KEY` in your production environment. Note: any MCP API key created before the v4 upgrade must be regenerated.
 
+### Post preview (approve before create)
+
+When you ask Eve to create a post, it doesn't write it immediately — it calls a
+`proposePost` tool that opens an **editable side panel** (title, status, and the
+Markdown body with an Edit/Preview toggle). Nothing is saved until you click
+**Add it**, which tells Eve to create the post via the MCP `createDocumentFromMarkdown`
+tool using your approved content; **Discard** writes nothing. Tasks are still created
+directly. See `docs/superpowers/specs/2026-06-19-eve-post-preview-design.md`.
+
 ## Voice (hands-free STT + TTS) — optional
 
 Eve supports an optional hands-free voice loop: speak your request (Silero VAD

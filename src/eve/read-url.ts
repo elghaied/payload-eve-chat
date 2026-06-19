@@ -24,6 +24,9 @@ export async function readUrl({
   maxChars?: number
 }): Promise<{ title: string; url: string; text: string; truncated: boolean }> {
   const target = await assertFetchableUrl(url)
+  // We validate the initial URL above and re-validate the final URL after redirects (below).
+  // Using redirect:'follow' means intermediate redirect hops are not individually inspected —
+  // a known, accepted limitation; only the origin and final destination are checked.
   const res = await fetch(target, {
     headers: { Accept: 'text/html,application/xhtml+xml' },
     redirect: 'follow',

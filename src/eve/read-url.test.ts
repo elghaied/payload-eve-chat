@@ -15,7 +15,13 @@ describe('extractReadable', () => {
   })
 })
 
-vi.mock('./url-safety', () => ({ assertFetchableUrl: vi.fn(async (u: string) => new URL(u)) }))
+vi.mock('./url-safety', () => ({
+  assertFetchableUrl: vi.fn(async (u: string) => {
+    const url = new URL(u)
+    if (url.hostname === '169.254.169.254') throw new Error('blocked')
+    return url
+  }),
+}))
 
 describe('readUrl', () => {
   afterEach(() => vi.unstubAllGlobals())
@@ -29,6 +35,16 @@ describe('readUrl', () => {
     expect(out.title).toBe('T')
     expect(out.truncated).toBe(true)
     expect(out.text.length).toBe(40)
+  })
+
+  it('rejects when a redirect lands on a private final URL', async () => {
+    const res = new Response('<html><body><p>hi</p></body></html>', {
+      status: 200,
+      headers: { 'content-type': 'text/html' },
+    })
+    Object.defineProperty(res, 'url', { value: 'http://169.254.169.254/latest/meta-data' })
+    vi.stubGlobal('fetch', vi.fn(async () => res))
+    await expect(readUrl({ url: 'https://public.example/start' })).rejects.toThrow()
   })
 
   it('rejects a non-HTML content type', async () => {

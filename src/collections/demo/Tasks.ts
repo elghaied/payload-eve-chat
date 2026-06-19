@@ -38,5 +38,7 @@ export const Tasks: CollectionConfig = {
     },
     { name: 'dueDate', type: 'date' },
   ],
+  // v4 enables versions by default; this demo doesn't use drafts/versions.
+  versions: false,
   timestamps: true,
 }

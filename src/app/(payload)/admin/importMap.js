@@ -21,9 +21,13 @@ import { StrikethroughFeatureClient as StrikethroughFeatureClient_e70f5e05f09f93
 import { UnderlineFeatureClient as UnderlineFeatureClient_e70f5e05f09f93e00b997edb1ef0c864 } from '@payloadcms/richtext-lexical/client'
 import { BoldFeatureClient as BoldFeatureClient_e70f5e05f09f93e00b997edb1ef0c864 } from '@payloadcms/richtext-lexical/client'
 import { ItalicFeatureClient as ItalicFeatureClient_e70f5e05f09f93e00b997edb1ef0c864 } from '@payloadcms/richtext-lexical/client'
+import { APIKeyField as APIKeyField_210e1789eef737e0b4d9f054258f19bb } from '@payloadcms/plugin-mcp/client'
+import { AccessField as AccessField_210e1789eef737e0b4d9f054258f19bb } from '@payloadcms/plugin-mcp/client'
+import { APIKeysEmptyState as APIKeysEmptyState_210e1789eef737e0b4d9f054258f19bb } from '@payloadcms/plugin-mcp/client'
+import { MCPSettingsMenu as MCPSettingsMenu_210e1789eef737e0b4d9f054258f19bb } from '@payloadcms/plugin-mcp/client'
 import { EveNavLink as EveNavLink_e4053c035a815ae6e6445ba7e6d544d1 } from '../../../components/eve/EveNavLink'
 import { EveView as EveView_3aa04f982e779067b4fb817502ff73f1 } from '../../../components/eve/EveView'
-import { CollectionCards as CollectionCards_f9c02e79a4aed9a3924487c0cd4cafb1 } from '@payloadcms/next/rsc'
+import { CollectionCards as CollectionCards_ab83ff7e88da8d3530831f296ec4756a } from '@payloadcms/ui/rsc'
 
 /** @type import('payload').ImportMap */
 export const importMap = {
@@ -50,7 +54,11 @@ export const importMap = {
   "@payloadcms/richtext-lexical/client#UnderlineFeatureClient": UnderlineFeatureClient_e70f5e05f09f93e00b997edb1ef0c864,
   "@payloadcms/richtext-lexical/client#BoldFeatureClient": BoldFeatureClient_e70f5e05f09f93e00b997edb1ef0c864,
   "@payloadcms/richtext-lexical/client#ItalicFeatureClient": ItalicFeatureClient_e70f5e05f09f93e00b997edb1ef0c864,
+  "@payloadcms/plugin-mcp/client#APIKeyField": APIKeyField_210e1789eef737e0b4d9f054258f19bb,
+  "@payloadcms/plugin-mcp/client#AccessField": AccessField_210e1789eef737e0b4d9f054258f19bb,
+  "@payloadcms/plugin-mcp/client#APIKeysEmptyState": APIKeysEmptyState_210e1789eef737e0b4d9f054258f19bb,
+  "@payloadcms/plugin-mcp/client#MCPSettingsMenu": MCPSettingsMenu_210e1789eef737e0b4d9f054258f19bb,
   "/components/eve/EveNavLink#EveNavLink": EveNavLink_e4053c035a815ae6e6445ba7e6d544d1,
   "/components/eve/EveView#EveView": EveView_3aa04f982e779067b4fb817502ff73f1,
-  "@payloadcms/next/rsc#CollectionCards": CollectionCards_f9c02e79a4aed9a3924487c0cd4cafb1
+  "@payloadcms/ui/rsc#CollectionCards": CollectionCards_ab83ff7e88da8d3530831f296ec4756a
 }

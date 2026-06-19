@@ -34,5 +34,7 @@ export const Conversations: CollectionConfig = {
     },
     { name: 'messages', type: 'json' },
   ],
+  // v4 enables versions by default; chat threads don't need version history.
+  versions: false,
   timestamps: true,
 }

@@ -38,5 +38,7 @@ export const Posts: CollectionConfig = {
     },
     { name: 'author', type: 'relationship', relationTo: 'users' },
   ],
+  // v4 enables versions by default; this demo doesn't use drafts/versions.
+  versions: false,
   timestamps: true,
 }

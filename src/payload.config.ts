@@ -11,7 +11,6 @@ import { Media } from './collections/Media'
 import { Posts } from './collections/demo/Posts'
 import { Tasks } from './collections/demo/Tasks'
 import { Conversations } from './collections/Conversations'
-import type { User } from './payload-types'
 
 const filename = fileURLToPath(import.meta.url)
 const dirname = path.dirname(filename)
@@ -43,26 +42,50 @@ export default buildConfig({
   }),
   sharp,
   plugins: [
+    // v4 plugin-mcp uses an OPT-OUT model: every collection is exposed through the
+    // built-in CRUD tools (find/create/update/delete/getCollectionSchema) by default.
+    // We expose only posts and tasks (read/write, no delete) and explicitly disable
+    // every tool on the collections that must not be reachable over MCP.
     mcpPlugin({
       collections: {
         posts: {
           description:
             'Blog posts. Use find to list/read, create to add, update to edit. Fields: title, content, status (draft|published), author.',
-          enabled: { find: true, create: true, update: true },
+          tools: { delete: false },
         },
         tasks: {
           description:
             'To-do tasks. Use find to list/read, create to add, update to edit. Fields: title, done (boolean), priority (low|medium|high), dueDate.',
-          enabled: { find: true, create: true, update: true },
+          tools: { delete: false },
+        },
+        // Lock down everything not part of the demo surface.
+        users: {
+          tools: { find: false, create: false, update: false, delete: false, getCollectionSchema: false },
+        },
+        media: {
+          tools: { find: false, create: false, update: false, delete: false, getCollectionSchema: false },
+        },
+        conversations: {
+          tools: { find: false, create: false, update: false, delete: false, getCollectionSchema: false },
         },
       },
-      // In development, bypass API key auth so the endpoint is accessible without credentials.
+      // In development, bypass API key auth so the endpoint is reachable without
+      // credentials. Grant exactly the items the plugin registered (i.e. the enabled
+      // tools above) and run as the first admin user. Gated to development only.
       ...(process.env.NODE_ENV === 'development' && {
-        overrideAuth: async () => ({
-          posts: { find: true, create: true, update: true },
-          tasks: { find: true, create: true, update: true },
-          user: { collection: 'users', email: 'dev@local', id: '000000000000000000000000' } as unknown as User,
-        }),
+        overrideAuth: async ({ req, pluginConfig }) => {
+          const { docs } = await req.payload.find({
+            collection: 'users',
+            limit: 1,
+            depth: 0,
+            overrideAccess: true,
+          })
+          return {
+            items: pluginConfig.items,
+            overrideAccess: true,
+            user: docs[0] ?? null,
+          }
+        },
       }),
     }),
   ],

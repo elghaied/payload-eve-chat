@@ -1,6 +1,6 @@
 'use client'
 import React from 'react'
-import Link from 'next/link'
+import { PayloadLink as Link } from '@payloadcms/ui'
 
 /**
  * A navigation link rendered in the Payload admin sidebar that points to the

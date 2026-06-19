@@ -20,6 +20,17 @@
 
 @import "tw-animate-css";
 
+/* Streamdown renders the chat Markdown with its own utility classes (incl. the
+   "open external link?" safety modal). Tailwind only emits classes it can see,
+   so point it at Streamdown's dist (+ the plugins we enable) — without this the
+   modal's layout classes (fixed/inset-0/max-w-md/rounded-xl/shadow-lg) are never
+   generated and it renders as an unstyled full-width banner. */
+@source "../../../node_modules/streamdown/dist/*.js";
+@source "../../../node_modules/@streamdown/code/dist/*.js";
+@source "../../../node_modules/@streamdown/cjk/dist/*.js";
+@source "../../../node_modules/@streamdown/math/dist/*.js";
+@source "../../../node_modules/@streamdown/mermaid/dist/*.js";
+
 /* Payload signals dark mode via <html data-theme="dark">, not a .dark class —
    key our dark variant and tokens off that so the chat follows the admin theme. */
 @custom-variant dark (&:where([data-theme="dark"] *));

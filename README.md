@@ -309,6 +309,17 @@ cloud provider, change the base URL + model (and set an API key) — no code cha
     STT_BASE_URL=https://api.openai.com/v1   STT_MODEL=whisper-1        STT_API_KEY=sk-...
     TTS_BASE_URL=https://api.openai.com/v1   TTS_MODEL=gpt-4o-mini-tts  TTS_VOICE=alloy  TTS_API_KEY=sk-...
 
+## Roadmap
+
+- **Native-API voice providers (e.g. Deepgram).** Voice currently speaks the
+  OpenAI audio API, so any OpenAI-compatible STT/TTS works with no code change
+  (see [Swapping models / providers](#swapping-models--providers-agnostic)).
+  Providers with their own native contract — like **Deepgram** (`/v1/listen`,
+  `/v1/speak`, `Token` auth, different request/response shapes) — aren't
+  drop-in. Planned: a small provider adapter in `src/eve/audio.ts` (selected via
+  an env var) that translates the request/response for non-OpenAI engines, with
+  the routes, config plumbing, and UI unchanged.
+
 ## Questions
 
 If you have any issues or questions, reach out to us on [Discord](https://discord.com/invite/payload) or start a [GitHub discussion](https://github.com/payloadcms/payload/discussions).

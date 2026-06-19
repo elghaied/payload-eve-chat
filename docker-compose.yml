@@ -12,12 +12,24 @@ services:
       - .:/home/node/app
       - node_modules:/home/node/app/node_modules
     working_dir: /home/node/app/
-    command: sh -c "corepack enable && corepack prepare pnpm@latest --activate && pnpm install && pnpm dev"
+    # Pin pnpm 10 — the repo's engines.pnpm is "^9 || ^10"; pnpm@latest (11) is refused.
+    # Keep pnpm's content store inside the node_modules volume (not the bind-mounted
+    # repo) so it isn't written back to the host as root, and persists across restarts.
+    command: sh -c "corepack enable && corepack prepare pnpm@10 --activate && pnpm install --store-dir /home/node/app/node_modules/.pnpm-store && pnpm dev"
     depends_on:
       - mongo
       # - postgres
     env_file:
       - .env
+    # Override the host-oriented localhost URLs from .env with compose service names,
+    # so the app reaches the other containers when it runs INSIDE Docker.
+    environment:
+      # Let pnpm run non-interactively (auto-confirm a node_modules purge; no TTY here).
+      - CI=true
+      - DATABASE_URL=mongodb://mongo/payload-eve-chat
+      - OLLAMA_BASE_URL=http://ollama:11434/api
+      - STT_BASE_URL=http://stt:8000/v1
+      - TTS_BASE_URL=http://tts:8880/v1
 
   # Ensure your DATABASE_URL uses 'mongo' as the hostname ie. mongodb://mongo/my-db-name
   mongo:

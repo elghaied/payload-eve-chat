@@ -64,10 +64,11 @@ export async function POST(req: Request): Promise<Response> {
     messages: modelMessages,
     tools,
     stopWhen: stepCountIs(5),
-    // Ollama-only: ask reasoning models (qwen3, deepseek-r1, ...) to separate
-    // their chain-of-thought into reasoning parts instead of inlining it in the
-    // answer. Ignored by non-Ollama providers (namespaced under `ollama`).
-    providerOptions: { ollama: { think: true } },
+    // Ollama-only: keep reasoning models (qwen3, deepseek-r1, ...) from burning their
+    // context/turn on long chain-of-thought. Small models over-think trivial asks and
+    // then fail to emit the tool call; disabling `think` makes them act more directly.
+    // Ignored by non-Ollama providers (namespaced under `ollama`).
+    providerOptions: { ollama: { think: false } },
     onFinish: () => { void close() },
     onAbort: () => { void close() },
   })

@@ -88,6 +88,9 @@ services:
     environment:
       - HOME=/tmp
       - OLLAMA_MODELS=/models
+      # Default context window. 4096 is too small for the agent (system prompt +
+      # MCP tool schemas + reasoning + tool results overflow it mid-task).
+      - OLLAMA_CONTEXT_LENGTH=8192
     ports:
       - '11434:11434'
     volumes:

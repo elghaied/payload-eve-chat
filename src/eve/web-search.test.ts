@@ -8,7 +8,7 @@ afterEach(() => vi.unstubAllGlobals())
 
 describe('webSearch', () => {
   it('queries SearXNG JSON and maps results', async () => {
-    const fetchMock = vi.fn(async () =>
+    const fetchMock = vi.fn(async (_input: string | URL, _init?: RequestInit) =>
       new Response(
         JSON.stringify({ results: [{ title: 'T', url: 'https://e.com', content: 'snip' }] }),
         { status: 200 },
@@ -25,12 +25,12 @@ describe('webSearch', () => {
 
   it('clamps maxResults to at most 10', async () => {
     const many = Array.from({ length: 20 }, (_, i) => ({ title: `t${i}`, url: `https://e/${i}`, content: '' }))
-    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ results: many }), { status: 200 })))
+    vi.stubGlobal('fetch', vi.fn(async (_input: string | URL, _init?: RequestInit) => new Response(JSON.stringify({ results: many }), { status: 200 })))
     expect((await webSearch({ query: 'x', maxResults: 50, config })).length).toBe(10)
   })
 
   it('throws on non-2xx', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => new Response('nope', { status: 502 })))
+    vi.stubGlobal('fetch', vi.fn(async (_input: string | URL, _init?: RequestInit) => new Response('nope', { status: 502 })))
     await expect(webSearch({ query: 'x', config })).rejects.toThrow()
   })
 

@@ -109,14 +109,25 @@ export const EveChat: React.FC<{
   const handledProposeIdRef = useRef<string | undefined>(undefined)
 
   // Open the panel when the agent proposes a post.
+  // Only act on a terminal part state so we never open with partial/streaming input.
   useEffect(() => {
     for (let i = messages.length - 1; i >= 0; i--) {
       const m = messages[i]
       if (m.role !== 'assistant') continue
       for (let j = m.parts.length - 1; j >= 0; j--) {
-        const p = m.parts[j] as { type: string; toolCallId?: string; input?: unknown; output?: unknown }
+        const p = m.parts[j] as {
+          type: string
+          state?: string
+          toolCallId?: string
+          input?: unknown
+          output?: unknown
+        }
         if (p.type !== 'tool-proposePost') continue
-        const id = p.toolCallId ?? `${i}-${j}`
+        // If the part is still streaming/pending, wait — don't set the ref yet.
+        if (p.state !== 'output-available' && p.state !== 'input-available') return
+        // Completed tool parts always have a toolCallId; skip if absent.
+        const id = p.toolCallId
+        if (!id) return
         const draft = (p.output ?? p.input) as PostDraft | undefined
         if (draft && id !== handledProposeIdRef.current) {
           handledProposeIdRef.current = id
@@ -204,15 +215,28 @@ export const EveChat: React.FC<{
                         )
                       }
                       if (part.type === 'tool-proposePost') {
-                        const tp = part as { toolCallId?: string; input?: unknown; output?: unknown }
+                        const tp = part as {
+                          state?: string
+                          toolCallId?: string
+                          input?: unknown
+                          output?: unknown
+                        }
+                        // Only render the affordance once the part is at a terminal state
+                        // and has a stable toolCallId, matching the open-effect guard.
+                        if (
+                          (tp.state !== 'output-available' && tp.state !== 'input-available') ||
+                          !tp.toolCallId
+                        ) {
+                          return null
+                        }
+                        const id = tp.toolCallId
                         const draft = (tp.output ?? tp.input) as PostDraft | undefined
                         return (
                           <button
                             className="text-left text-muted-foreground text-sm underline-offset-2 hover:text-foreground hover:underline"
                             key={`${messageKey}-${i}`}
                             onClick={() =>
-                              draft &&
-                              setActiveDraft({ id: tp.toolCallId ?? `${messageKey}-${i}`, draft })
+                              draft && setActiveDraft({ id, draft })
                             }
                             type="button"
                           >

@@ -1,8 +1,12 @@
 # Payload + Vercel AI SDK Chat Agent
 
-A working example of an AI chat agent built inside Payload CMS. The agent ("Eve") lives at `/admin/eve`, reads and writes Payload collections over MCP, and streams responses back to the browser using the Vercel AI SDK. Swap between Claude and GPT with a single env-var change.
+A working example of an AI chat agent built inside Payload CMS. The agent ("Eve") lives at `/admin/eve`, reads and writes Payload collections over MCP, and streams responses back to the browser using the Vercel AI SDK. Swap between Claude, GPT, and local Ollama models with a single env-var change.
 
 See the [AI Chat Agent (Eve)](#ai-chat-agent-eve) section below for architecture details and environment setup.
+
+## Requirements
+
+This project targets **Payload v4** (currently pinned to the `canary` release) and requires **Node 24.15+** and **TypeScript 6+**. The previous Payload `3.85.1` version is preserved on the **`v3`** branch — check it out if you need the stable v3 release.
 
 ## Quick Start - local setup
 
@@ -15,7 +19,7 @@ Clone this repo and `cd` into it.
 ### Development
 
 1. First [clone the repo](#clone) if you have not done so already
-2. `cd my-project && cp .env.example .env` — fill in `MONGODB_URL`, `PAYLOAD_SECRET`, and the AI provider keys (see [Environment setup](#environment-setup)).
+2. `cd my-project && cp .env.example .env` — fill in `DATABASE_URL`, `PAYLOAD_SECRET`, and the AI provider keys (see [Environment setup](#environment-setup)).
 
 3. `pnpm install && pnpm dev` to install dependencies and start the dev server
 4. Open `http://localhost:3000/admin` to log in and create your first admin user, then navigate to **AI Chat Agent (Eve)** in the sidebar (or go to `http://localhost:3000/admin/eve`) to start chatting.
@@ -28,7 +32,7 @@ If you prefer to use Docker for local development instead of a local MongoDB ins
 
 To do so, follow these steps:
 
-- Modify the `MONGODB_URL` in your `.env` file to `mongodb://127.0.0.1/<dbname>`
+- Modify the `DATABASE_URL` in your `.env` file to `mongodb://127.0.0.1/<dbname>`
 - Modify the `docker-compose.yml` file's `MONGODB_URL` to match the above `<dbname>`
 - Run `docker-compose up` to start the database, optionally pass `-d` to run in the background.
 
@@ -75,14 +79,14 @@ That's it! The Docker instance will help you get up and running quickly while al
 │                              │ POST /api/eve                     │
 └──────────────────────────────┼──────────────────────────────────┘
                                ▼
-                  src/app/(payload)/api/eve/route.ts
+                       src/app/api/eve/route.ts
                    - payload.auth() (admin-only)
                    - load/create Conversation
                    - streamText({ model, tools, system })
                    - persist UIMessage[] onFinish
                           │              │
               provider.ts ▼              ▼ mcp-client.ts
-        (anthropic | openai)      createMCPClient(HTTP)
+   (anthropic|openai|ollama)      createMCPClient(HTTP)
                                           │
                                           ▼
                             POST /api/mcp  (@payloadcms/plugin-mcp)
@@ -93,7 +97,7 @@ That's it! The Docker instance will help you get up and running quickly while al
 
 The agent lives at `/admin/eve`, a custom Payload admin view. The UI is built with Vercel AI Elements and `useChat`, which streams to `POST /api/eve`. The route handler authenticates the admin user via `payload.auth()`, opens an HTTP MCP client pointed at Payload's own `/api/mcp` endpoint (served by `@payloadcms/plugin-mcp`), passes the MCP tools to `streamText`, streams the response back to the browser, and persists the conversation to a `Conversations` collection.
 
-The agent manages two demo collections — `Posts` and `Tasks` — exposed over MCP with find, create, and update operations (no delete).
+The agent manages two demo collections — `Posts` and `Tasks` — exposed over MCP with find, create, and update operations (no delete). In Payload v4 the MCP plugin exposes **every** collection by default (an opt-out model), so the config explicitly locks down `Users`, `Media`, and `Conversations` — only `Posts` and `Tasks` are reachable over MCP. See `src/payload.config.ts`.
 
 ### Environment setup
 
@@ -137,9 +141,9 @@ Note: local models are generally weaker at multi-step tool use than the hosted C
 
 ### MCP authentication: dev vs. production
 
-In **development**, the `/api/mcp` endpoint requires no API key. The `MCP_API_KEY` variable can be left blank.
+In **development**, the `/api/mcp` endpoint requires no API key — the config registers a development-only `overrideAuth` that bypasses key checks and runs as the first admin user. The `MCP_API_KEY` variable can be left blank.
 
-In **production**, the MCP endpoint is protected. You need to create a Bearer API key in the `payload-mcp-api-keys` collection (managed inside the Payload admin), then set that key as `MCP_API_KEY` in your production environment.
+In **production**, the MCP endpoint is protected by a Bearer API key. In Payload v4, MCP API keys are managed from the user menu under **Settings → Manage API keys** (they are no longer a standalone auth collection in the main nav). Create a key there, then set it as `MCP_API_KEY` in your production environment. Note: any MCP API key created before the v4 upgrade must be regenerated.
 
 ## Questions
 

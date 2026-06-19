@@ -23,6 +23,7 @@ import { Tool, ToolContent, ToolHeader, ToolInput, ToolOutput } from '@/componen
 import { Reasoning } from '@/components/ai-elements/reasoning'
 import { ConversationSidebar, type ConversationSummary } from './ConversationSidebar'
 import { useVoice } from './useVoice'
+import { stripSpeak } from './speakable'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { MicIcon, PhoneOffIcon } from 'lucide-react'
 import './eve.css'
@@ -56,9 +57,9 @@ export const EveChat: React.FC<{
     messages: initialMessages,
     transport: new DefaultChatTransport({
       api: '/api/eve',
-      // Forward the conversation id supplied per-message via sendMessage's body.
+      // Forward the conversation id + voice flag supplied per-message via sendMessage's body.
       prepareSendMessagesRequest: ({ messages: msgs, body }) => ({
-        body: { messages: msgs, conversationId: body?.conversationId },
+        body: { messages: msgs, conversationId: body?.conversationId, voice: body?.voice },
       }),
     }),
     onFinish: ({ message, messages: finalMessages }) => {
@@ -105,7 +106,8 @@ export const EveChat: React.FC<{
     status,
     assistantText,
     assistantMessageId,
-    onTranscript: (text) => sendMessage({ text }, { body: { conversationId } }),
+    // Voice-originated turn: flag it so the API asks Eve for a spoken <speak> summary.
+    onTranscript: (text) => sendMessage({ text }, { body: { conversationId, voice: true } }),
   })
 
   const handleSubmit = (message: PromptInputMessage) => {
@@ -164,7 +166,7 @@ export const EveChat: React.FC<{
                       if (part.type === 'text') {
                         return (
                           <MessageResponse key={`${messageKey}-${i}`}>
-                            {part.text}
+                            {stripSpeak(part.text)}
                           </MessageResponse>
                         )
                       }

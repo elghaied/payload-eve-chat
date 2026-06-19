@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from '@payloadcms/ui'
 import { createSentenceStreamer } from './sentenceStreamer'
+import { extractSpeak } from './speakable'
 import { encodeWav } from './wav'
 
 // @ricky0123/vad-web needs to fetch its worklet + Silero ONNX model and the
@@ -179,7 +180,9 @@ export function useVoice({
     [onTranscript],
   )
 
-  // Feed streamed assistant text to TTS as sentences complete (only when TTS attached).
+  // Speak only the <speak> summary as it streams (when TTS attached). Until that
+  // block appears we stay silent — the detailed reply streams to the chat but is
+  // not voiced.
   useEffect(() => {
     if (!active || !ttsAvailable || !assistantText) return
     // A new assistant turn (id change) means the streamer's consumed cursor is
@@ -188,16 +191,26 @@ export function useVoice({
       streamerRef.current = createSentenceStreamer()
       lastAssistantIdRef.current = assistantMessageId
     }
-    for (const sentence of streamerRef.current.push(assistantText)) enqueueSpeak(sentence)
+    const speakable = extractSpeak(assistantText)
+    if (speakable !== null) {
+      for (const sentence of streamerRef.current.push(speakable)) enqueueSpeak(sentence)
+    }
   }, [assistantText, assistantMessageId, active, ttsAvailable, enqueueSpeak])
 
-  // Flush the trailing sentence when the LLM stream finishes.
+  // When the stream finishes, flush the trailing spoken sentence. If the model
+  // produced no <speak> block, fall back to speaking the whole reply so voice is
+  // never silent.
   useEffect(() => {
     if (!active || !ttsAvailable) return
-    if (status !== 'streaming' && status !== 'submitted') {
+    if (status === 'streaming' || status === 'submitted') return
+    const text = assistantText ?? ''
+    if (extractSpeak(text) !== null) {
+      for (const sentence of streamerRef.current.flush()) enqueueSpeak(sentence)
+    } else if (text.trim()) {
+      for (const sentence of streamerRef.current.push(text)) enqueueSpeak(sentence)
       for (const sentence of streamerRef.current.flush()) enqueueSpeak(sentence)
     }
-  }, [status, active, ttsAvailable, enqueueSpeak])
+  }, [status, assistantText, active, ttsAvailable, enqueueSpeak])
 
   const start = useCallback(async () => {
     // Guard: a hands-free loop needs speech input.

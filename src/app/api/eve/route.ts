@@ -4,7 +4,7 @@ import config from '@payload-config'
 import { getEveConfig } from '@/eve/config'
 import { resolveModel } from '@/eve/provider'
 import { createPayloadMcpTools } from '@/eve/mcp-client'
-import { EVE_SYSTEM_PROMPT } from '@/eve/system-prompt'
+import { EVE_SYSTEM_PROMPT, VOICE_REPLY_INSTRUCTION } from '@/eve/system-prompt'
 import { createConversation, loadConversation, saveMessages } from '@/eve/conversations'
 
 export async function POST(req: Request): Promise<Response> {
@@ -24,13 +24,13 @@ export async function POST(req: Request): Promise<Response> {
   // At this point TypeScript narrows `user` to `User` (collection: 'users').
   const typedUser = user
 
-  let body: { messages: UIMessage[]; conversationId?: string }
+  let body: { messages: UIMessage[]; conversationId?: string; voice?: boolean }
   try {
     body = await req.json()
   } catch {
     return Response.json({ error: 'Invalid JSON' }, { status: 400 })
   }
-  const { messages, conversationId } = body
+  const { messages, conversationId, voice } = body
 
   let eveConfig
   try {
@@ -59,7 +59,8 @@ export async function POST(req: Request): Promise<Response> {
 
   const result = streamText({
     model: resolveModel(eveConfig),
-    system: EVE_SYSTEM_PROMPT,
+    // On voice turns, ask Eve to lead with a short spoken <speak> summary.
+    system: voice ? `${EVE_SYSTEM_PROMPT}\n\n${VOICE_REPLY_INSTRUCTION}` : EVE_SYSTEM_PROMPT,
     messages: modelMessages,
     tools,
     stopWhen: stepCountIs(5),

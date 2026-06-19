@@ -1,7 +1,7 @@
 {
   "name": "payload-eve-chat",
   "version": "1.0.0",
-  "description": "A blank template to get started with Payload 3.0",
+  "description": "AI chat agent (Eve) built inside Payload CMS — MCP tools + Vercel AI SDK, with optional hands-free voice (STT/TTS) and a one-command Docker stack.",
   "license": "MIT",
   "type": "module",
   "scripts": {

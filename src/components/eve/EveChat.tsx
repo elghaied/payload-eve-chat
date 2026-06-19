@@ -27,7 +27,8 @@ import { buildApprovalMessage, type PostDraft } from '@/eve/approval-message'
 import { useVoice } from './useVoice'
 import { stripSpeak } from './speakable'
 import { TooltipProvider } from '@/components/ui/tooltip'
-import { MicIcon, PhoneOffIcon } from 'lucide-react'
+import { EqualizerBars } from './EqualizerBars'
+import { MicIcon } from 'lucide-react'
 import './eve.css'
 
 export { type ConversationSummary }
@@ -288,7 +289,17 @@ export const EveChat: React.FC<{
                 tooltip={voice.active ? `Voice: ${voice.state} (click to stop)` : 'Start voice chat'}
                 aria-label={voice.active ? 'Stop voice chat' : 'Start voice chat'}
               >
-                {voice.active ? <PhoneOffIcon className="size-4" /> : <MicIcon className="size-4" />}
+                {voice.active ? (
+                  <EqualizerBars
+                    className={
+                      voice.state === 'thinking' || voice.state === 'transcribing'
+                        ? 'opacity-60'
+                        : undefined
+                    }
+                  />
+                ) : (
+                  <MicIcon className="size-4" />
+                )}
               </PromptInputButton>
             </PromptInputTools>
             {/* Enabled while generating (acts as Stop); otherwise needs input text. */}

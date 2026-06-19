@@ -130,3 +130,19 @@
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.556 0 0);
 }
+
+/* "Audio moving" equalizer bars for the mic button while voice is active
+   (see EqualizerBars.tsx). Each bar scales vertically from its base, staggered. */
+@keyframes eve-eq {
+  0%,
+  100% {
+    transform: scaleY(0.35);
+  }
+  50% {
+    transform: scaleY(1);
+  }
+}
+.eve-eq-bar {
+  transform-origin: bottom;
+  animation: eve-eq 0.9s ease-in-out infinite;
+}

@@ -162,6 +162,24 @@ Markdown body with an Edit/Preview toggle). Nothing is saved until you click
 tool using your approved content; **Discard** writes nothing. Tasks are still created
 directly. See `docs/superpowers/specs/2026-06-19-eve-post-preview-design.md`.
 
+### Web search (optional, self-hosted SearXNG)
+
+Eve can search the web and read pages when a **SearXNG** instance is attached. With it,
+she can summarize a link you paste and research a topic to write an article (returned in
+the chat; ask her to save it to run it through the post preview).
+
+Run SearXNG and point Eve at it:
+
+    docker compose --profile web up -d searxng      # or --profile full for the whole stack
+    # in .env:
+    SEARXNG_URL=http://localhost:8080
+
+Two tools light up only when `SEARXNG_URL` is set: `webSearch` (SearXNG JSON) and `readUrl`
+(fetch + Mozilla Readability extraction). `readUrl` is SSRF-guarded — http(s) only, and
+loopback/private/link-local hosts are blocked. Sanity-check SearXNG's JSON API:
+
+    curl "http://localhost:8080/search?q=test&format=json"
+
 ## Voice (hands-free STT + TTS) — optional
 
 Eve supports an optional hands-free voice loop: speak your request (Silero VAD

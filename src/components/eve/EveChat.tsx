@@ -12,11 +12,13 @@ import {
 import { Message, MessageContent, MessageResponse } from '@/components/ai-elements/message'
 import {
   PromptInput,
+  PromptInputFooter,
   type PromptInputMessage,
   PromptInputSubmit,
   PromptInputTextarea,
 } from '@/components/ai-elements/prompt-input'
 import { Tool, ToolContent, ToolHeader, ToolInput, ToolOutput } from '@/components/ai-elements/tool'
+import { Reasoning } from '@/components/ai-elements/reasoning'
 import { ConversationSidebar, type ConversationSummary } from './ConversationSidebar'
 import './eve.css'
 
@@ -39,7 +41,7 @@ export const EveChat: React.FC<{
   // live chat). Re-seeds from the prop on remount (i.e. when navigating threads).
   const [sidebarConversations, setSidebarConversations] = useState(conversations)
 
-  const { messages, sendMessage, status, setMessages } = useChat({
+  const { messages, sendMessage, status, setMessages, stop } = useChat({
     // Stable chat identity for this mount. EveView keys EveChat by activeId, so
     // switching threads remounts the component; this id must NOT change when we
     // adopt a conversation id mid-session (that would clear the messages).
@@ -91,7 +93,7 @@ export const EveChat: React.FC<{
   }
 
   return (
-    <div className="eve-scope flex h-[calc(100vh-var(--app-header-height,0px))] min-h-[600px]">
+    <div className="eve-scope flex h-[calc(100dvh-var(--app-header-height,48px))] min-h-[600px]">
       <ConversationSidebar
         conversations={sidebarConversations}
         activeId={conversationId}
@@ -115,6 +117,15 @@ export const EveChat: React.FC<{
                 <Message from={message.role} key={messageKey}>
                   <MessageContent>
                     {message.parts.map((part, i) => {
+                      if (part.type === 'reasoning') {
+                        return (
+                          <Reasoning
+                            key={`${messageKey}-${i}`}
+                            text={part.text}
+                            isStreaming={part.state === 'streaming'}
+                          />
+                        )
+                      }
                       if (part.type === 'text') {
                         return (
                           <MessageResponse key={`${messageKey}-${i}`}>
@@ -158,7 +169,14 @@ export const EveChat: React.FC<{
             placeholder="Message Eve…"
             onChange={(e) => setInput(e.currentTarget.value)}
           />
-          <PromptInputSubmit status={status} disabled={!input.trim()} />
+          <PromptInputFooter className="justify-end">
+            <PromptInputSubmit
+              status={status}
+              onStop={stop}
+              // Enabled while generating (acts as Stop); otherwise needs input text.
+              disabled={status !== 'streaming' && status !== 'submitted' && !input.trim()}
+            />
+          </PromptInputFooter>
         </PromptInput>
       </div>
     </div>

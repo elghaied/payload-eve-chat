@@ -12,6 +12,8 @@ export function resolveModel(config: EveConfig): LanguageModel {
   }
   if (config.provider === 'ollama') {
     // Local models via Ollama — no API key needed. Pick a tool-calling-capable model.
+    // Reasoning is separated from the answer via the `think` provider option set
+    // on the streamText call (see src/app/api/eve/route.ts).
     const ollama = createOllama({ baseURL: config.ollamaBaseURL })
     return ollama(config.ollamaModel)
   }

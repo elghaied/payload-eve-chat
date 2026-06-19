@@ -63,12 +63,19 @@ export async function POST(req: Request): Promise<Response> {
     messages: modelMessages,
     tools,
     stopWhen: stepCountIs(5),
+    // Ollama-only: ask reasoning models (qwen3, deepseek-r1, ...) to separate
+    // their chain-of-thought into reasoning parts instead of inlining it in the
+    // answer. Ignored by non-Ollama providers (namespaced under `ollama`).
+    providerOptions: { ollama: { think: true } },
     onFinish: () => { void close() },
     onAbort: () => { void close() },
   })
 
   return result.toUIMessageStreamResponse({
     originalMessages: messages,
+    // Stream reasoning parts (extracted from <think> by the provider middleware)
+    // so the client can render them in a collapsible disclosure.
+    sendReasoning: true,
     // Tell the client which conversation this turn belongs to, so a brand-new
     // chat can adopt the id and persist follow-up turns to the same thread
     // (instead of creating a new conversation per message).

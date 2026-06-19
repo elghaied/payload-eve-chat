@@ -5,12 +5,11 @@ import { createSentenceStreamer } from './sentenceStreamer'
 import { encodeWav } from './wav'
 
 // @ricky0123/vad-web needs to fetch its worklet + Silero ONNX model and the
-// onnxruntime-web WASM at runtime. Under Next/Turbopack those aren't served at
-// the library's guessed paths, so we point it at jsdelivr (pinned to the
-// installed versions). To run fully offline instead, copy the dist assets into
-// public/ and set these to '/'.
-const VAD_ASSET_BASE = 'https://cdn.jsdelivr.net/npm/@ricky0123/vad-web@0.0.30/dist/'
-const ORT_WASM_BASE = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.26.0/dist/'
+// onnxruntime-web WASM at runtime. We serve these self-hosted from /vad/ (copied
+// into public/vad/ by scripts/copy-vad-assets.mjs) rather than a CDN, so no
+// third-party code is loaded into the admin context and voice works offline.
+const VAD_ASSET_BASE = '/vad/'
+const ORT_WASM_BASE = '/vad/'
 
 export type VoiceState = 'idle' | 'listening' | 'transcribing' | 'thinking' | 'speaking'
 

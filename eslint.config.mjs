@@ -26,6 +26,7 @@ const eslintConfig = [
   {
     ignores: [
       '.next/',
+      'public/vad/**',
       'src/payload-types.ts',
       'src/payload-generated-schema.ts',
       'src/components/ui/**',

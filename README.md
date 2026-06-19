@@ -204,6 +204,13 @@ then activates for whichever service is attached:
     STT_BASE_URL=http://localhost:8000/v1
     TTS_BASE_URL=http://localhost:8880/v1
 
+The browser voice-activity-detection assets (the Silero ONNX model, audio
+worklet, and ONNX Runtime WASM) are **self-hosted, not loaded from a CDN**:
+`scripts/copy-vad-assets.mjs` vendors them from `node_modules` into
+`public/vad/` on `postinstall` (and before `dev`/`build`). They're git-ignored
+and regenerated to match the installed versions — run `pnpm vad:assets` to
+refresh manually.
+
 ### Swapping models / providers (agnostic)
 
 STT and TTS are reached only through the OpenAI audio API

@@ -28,6 +28,7 @@
     "@payloadcms/richtext-lexical": "canary",
     "@payloadcms/ui": "canary",
     "@radix-ui/react-use-controllable-state": "^1.2.3",
+    "@ricky0123/vad-web": "^0.0.30",
     "@rive-app/react-webgl2": "^4.29.1",
     "@streamdown/cjk": "^1.0.3",
     "@streamdown/code": "^1.1.1",

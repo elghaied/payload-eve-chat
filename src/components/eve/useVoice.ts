@@ -45,6 +45,7 @@ export function useVoice({ sttAvailable, ttsAvailable, status, assistantText, on
     playingRef.current = true
     setState('speaking')
     const done = () => {
+      URL.revokeObjectURL(audio.src)
       playingRef.current = false
       // call through the ref to avoid a forward-reference in the closure
       playNextRef.current?.()
@@ -63,6 +64,7 @@ export function useVoice({ sttAvailable, ttsAvailable, status, assistantText, on
     speakAbortRef.current?.abort()
     speakAbortRef.current = null
     for (const a of queueRef.current) {
+      URL.revokeObjectURL(a.src)
       a.pause()
       a.removeAttribute('src')
     }
@@ -73,6 +75,7 @@ export function useVoice({ sttAvailable, ttsAvailable, status, assistantText, on
   const speakSentence = useCallback(
     async (sentence: string) => {
       const controller = new AbortController()
+      speakAbortRef.current?.abort()
       speakAbortRef.current = controller
       try {
         const res = await fetch('/api/eve/speak', {
@@ -83,7 +86,8 @@ export function useVoice({ sttAvailable, ttsAvailable, status, assistantText, on
         })
         if (!res.ok) return
         const blob = await res.blob()
-        queueRef.current.push(new Audio(URL.createObjectURL(blob)))
+        const blobUrl = URL.createObjectURL(blob)
+        queueRef.current.push(new Audio(blobUrl))
         playNext()
       } catch {
         // aborted (barge-in) or network error: ignore, stay responsive

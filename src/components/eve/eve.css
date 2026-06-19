@@ -1,7 +1,22 @@
+/*
+ * Tailwind v4 + shadcn styles for the Eve chat view.
+ *
+ * Preflight (Tailwind's base reset) is INTENTIONALLY omitted: it targets bare
+ * element selectors (*, h1, button, ...) and would reset Payload's admin styles
+ * globally. Payload's importMap statically imports this view's components, so
+ * this stylesheet loads admin-wide, not just on /admin/eve — but with no
+ * Preflight, only the utility CLASSES and --tw-* variables are global, and the
+ * design tokens are scoped to `.eve-scope`. The admin uses BEM class names, so
+ * utility-name collisions are unlikely; the dashboard renders cleanly.
+ *
+ * We deliberately did NOT prefix the utilities (e.g. tw:flex): Payload v4 is
+ * moving to a Tailwind-first admin that ships its own reset sheet and semantic
+ * tokens (bg-brand, ...). When that lands, drop this hand-rolled token block and
+ * lean on the admin's Tailwind layer instead of prefixing/scoping by hand.
+ */
 @layer theme, base, components, utilities;
 @import 'tailwindcss/theme.css' layer(theme);
 @import 'tailwindcss/utilities.css' layer(utilities);
-/* Note: Preflight is intentionally omitted to avoid resetting Payload admin styles. */
 
 @import "tw-animate-css";
 

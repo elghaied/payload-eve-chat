@@ -39,4 +39,10 @@ describe('createSentenceStreamer', () => {
     expect(s.push('Done.   ')).toEqual(['Done.'])
     expect(s.flush()).toEqual([])
   })
+
+  it('does not split a Latin boundary glued to a non-ASCII char', () => {
+    const s = createSentenceStreamer()
+    expect(s.push('Bonjour.Über continues')).toEqual([])
+    expect(s.flush()).toEqual(['Bonjour.Über continues'])
+  })
 })

@@ -18,6 +18,8 @@ const isWhitespace = (c: string | undefined): boolean => c === undefined || /\s/
 
 const isAscii = (c: string): boolean => c.charCodeAt(0) < 128
 
+const isCjkBoundary = (c: string): boolean => c === '。' || c === '！' || c === '？'
+
 /** Is the '.' at `i` actually a decimal point or part of an abbreviation? */
 function isNonTerminalDot(text: string, i: number): boolean {
   const before = text[i - 1]
@@ -53,7 +55,8 @@ export function createSentenceStreamer(): SentenceStreamer {
       const atEnd = j >= fullText.length
       // A sentence is complete when its boundary is followed by whitespace/text,
       // a newline, or we are flushing the final text.
-      if (c === '\n' || (!atEnd && (isWhitespace(fullText[j]) || !isAscii(fullText[j]))) || (atEnd && final)) {
+      // CJK punctuation emits even if followed by non-ASCII; Latin punctuation requires whitespace/end.
+      if (c === '\n' || (!atEnd && (isWhitespace(fullText[j]) || (isCjkBoundary(c) && !isAscii(fullText[j])))) || (atEnd && final)) {
         const sentence = fullText.slice(start, j).trim()
         if (sentence) out.push(sentence)
         // Skip trailing whitespace so the next sentence starts clean.

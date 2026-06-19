@@ -115,10 +115,14 @@ services:
     image: searxng/searxng:latest
     profiles: ['web', 'full']
     ports:
-      - '8080:8080'
+      # Bind to loopback only — it's reached by the app on the host at
+      # localhost:8080; don't expose an open search proxy on the LAN.
+      - '127.0.0.1:8080:8080'
     volumes:
-      - ./searxng:/etc/searxng:rw
+      - ./searxng:/etc/searxng:ro
     environment:
+      # Local-dev default; set SEARXNG_SECRET in .env to a random value for any
+      # non-localhost deployment (the instance is loopback-bound above).
       - SEARXNG_SECRET=${SEARXNG_SECRET:-please-change-this-local-secret}
 
   # Uncomment the following to use postgres

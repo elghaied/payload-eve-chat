@@ -48,4 +48,44 @@ describe('getEveConfig', () => {
     expect(cfg.mcpServerUrl).toBe('http://localhost:4000/api/mcp')
     expect(cfg.mcpApiKey).toBe('mcp-key')
   })
+
+  it('leaves audio services unattached by default, with model/voice/format defaults', () => {
+    const cfg = getEveConfig({ ANTHROPIC_API_KEY: 'k' })
+    expect(cfg.sttBaseURL).toBeUndefined()
+    expect(cfg.ttsBaseURL).toBeUndefined()
+    expect(cfg.sttModel).toBe('Systran/faster-whisper-small')
+    expect(cfg.ttsModel).toBe('kokoro')
+    expect(cfg.ttsVoice).toBe('af_sky')
+    expect(cfg.ttsFormat).toBe('mp3')
+    expect(cfg.sttApiKey).toBeUndefined()
+    expect(cfg.ttsApiKey).toBeUndefined()
+  })
+
+  it('attaches services via base URLs and honors overrides + keys', () => {
+    const cfg = getEveConfig({
+      ANTHROPIC_API_KEY: 'k',
+      STT_BASE_URL: 'https://api.openai.com/v1',
+      STT_MODEL: 'whisper-1',
+      STT_API_KEY: 'sk-stt',
+      TTS_BASE_URL: 'https://api.openai.com/v1',
+      TTS_MODEL: 'gpt-4o-mini-tts',
+      TTS_VOICE: 'alloy',
+      TTS_FORMAT: 'wav',
+      TTS_API_KEY: 'sk-tts',
+    })
+    expect(cfg.sttBaseURL).toBe('https://api.openai.com/v1')
+    expect(cfg.sttModel).toBe('whisper-1')
+    expect(cfg.sttApiKey).toBe('sk-stt')
+    expect(cfg.ttsBaseURL).toBe('https://api.openai.com/v1')
+    expect(cfg.ttsModel).toBe('gpt-4o-mini-tts')
+    expect(cfg.ttsVoice).toBe('alloy')
+    expect(cfg.ttsFormat).toBe('wav')
+    expect(cfg.ttsApiKey).toBe('sk-tts')
+  })
+
+  it('attaches STT only (TTS stays unattached)', () => {
+    const cfg = getEveConfig({ ANTHROPIC_API_KEY: 'k', STT_BASE_URL: 'http://localhost:8000/v1' })
+    expect(cfg.sttBaseURL).toBe('http://localhost:8000/v1')
+    expect(cfg.ttsBaseURL).toBeUndefined()
+  })
 })

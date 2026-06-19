@@ -4,6 +4,14 @@ import { toast } from '@payloadcms/ui'
 import { createSentenceStreamer } from './sentenceStreamer'
 import { encodeWav } from './wav'
 
+// @ricky0123/vad-web needs to fetch its worklet + Silero ONNX model and the
+// onnxruntime-web WASM at runtime. Under Next/Turbopack those aren't served at
+// the library's guessed paths, so we point it at jsdelivr (pinned to the
+// installed versions). To run fully offline instead, copy the dist assets into
+// public/ and set these to '/'.
+const VAD_ASSET_BASE = 'https://cdn.jsdelivr.net/npm/@ricky0123/vad-web@0.0.30/dist/'
+const ORT_WASM_BASE = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.26.0/dist/'
+
 export type VoiceState = 'idle' | 'listening' | 'transcribing' | 'thinking' | 'speaking'
 
 type UseVoiceArgs = {
@@ -204,6 +212,8 @@ export function useVoice({
     try {
       const { MicVAD } = await import('@ricky0123/vad-web')
       const vad = await MicVAD.new({
+        baseAssetPath: VAD_ASSET_BASE,
+        onnxWASMBasePath: ORT_WASM_BASE,
         onSpeechStart: () => {
           clearPlayback() // barge-in: stop Eve talking
           setState('listening')

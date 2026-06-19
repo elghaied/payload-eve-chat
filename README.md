@@ -328,4 +328,4 @@ cloud provider, change the base URL + model (and set an API key) — no code cha
 
 ## Questions
 
-If you have any issues or questions, reach out to us on [Discord](https://discord.com/invite/payload) or start a [GitHub discussion](https://github.com/payloadcms/payload/discussions).
+For questions about Payload itself, reach out on the [Payload Discord](https://discord.com/invite/payload). For anything specific to this template — bugs, feature ideas, or setup help — please [open an issue](https://github.com/elghaied/payload-eve-chat/issues) on this repo.

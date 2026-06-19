@@ -22,7 +22,7 @@ afterEach(() => vi.unstubAllGlobals())
 
 describe('transcribe', () => {
   it('POSTs multipart to {sttBaseURL}/audio/transcriptions and returns text', async () => {
-    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ text: 'hello world' }), { status: 200 }))
+    const fetchMock = vi.fn(async (_url: string, _init: RequestInit) => new Response(JSON.stringify({ text: 'hello world' }), { status: 200 }))
     vi.stubGlobal('fetch', fetchMock)
     const out = await transcribe({ audio: new Blob(['x']), config: base })
     expect(out).toBe('hello world')
@@ -35,7 +35,7 @@ describe('transcribe', () => {
   })
 
   it('adds a bearer header only when sttApiKey is set', async () => {
-    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ text: 'hi' }), { status: 200 }))
+    const fetchMock = vi.fn(async (_url: string, _init: RequestInit) => new Response(JSON.stringify({ text: 'hi' }), { status: 200 }))
     vi.stubGlobal('fetch', fetchMock)
     await transcribe({ audio: new Blob(['x']), config: { ...base, sttApiKey: 'sk-1' } })
     expect((fetchMock.mock.calls[0][1].headers as Record<string, string>).Authorization).toBe('Bearer sk-1')
@@ -58,7 +58,7 @@ describe('transcribe', () => {
 
 describe('synthesize', () => {
   it('POSTs JSON to {ttsBaseURL}/audio/speech with model/input/voice/format', async () => {
-    const fetchMock = vi.fn(async () => new Response(new Uint8Array([1, 2, 3]), { status: 200, headers: { 'content-type': 'audio/mpeg' } }))
+    const fetchMock = vi.fn(async (_url: string, _init: RequestInit) => new Response(new Uint8Array([1, 2, 3]), { status: 200, headers: { 'content-type': 'audio/mpeg' } }))
     vi.stubGlobal('fetch', fetchMock)
     const res = await synthesize({ text: 'speak this', config: base })
     expect(res.status).toBe(200)
@@ -68,7 +68,7 @@ describe('synthesize', () => {
   })
 
   it('uses the per-call voice override when provided', async () => {
-    const fetchMock = vi.fn(async () => new Response(new Uint8Array([1]), { status: 200 }))
+    const fetchMock = vi.fn(async (_url: string, _init: RequestInit) => new Response(new Uint8Array([1]), { status: 200 }))
     vi.stubGlobal('fetch', fetchMock)
     await synthesize({ text: 'hi', voice: 'bella', config: base })
     expect(JSON.parse(fetchMock.mock.calls[0][1].body as string).voice).toBe('bella')

@@ -71,31 +71,34 @@ That's it! The Docker instance will help you get up and running quickly while al
 ### Architecture
 
 ```
-┌────────────────────────────────────────────────────────────────┐
-│ Payload Admin (Next.js / React 19)                              │
-│                                                                 │
-│  Custom view  /admin/eve                                        │
-│   EveView (server) ──► EveChat (client, AI Elements + useChat)  │
-│                              │ POST /api/eve                     │
-└──────────────────────────────┼──────────────────────────────────┘
-                               ▼
-                       src/app/api/eve/route.ts
-                   - payload.auth() (admin-only)
-                   - load/create Conversation
-                   - streamText({ model, tools, system })
-                   - persist UIMessage[] onFinish
-                          │              │
-              provider.ts ▼              ▼ mcp-client.ts
-   (anthropic|openai|ollama)      createMCPClient(HTTP)
-                                          │
-                                          ▼
-                            POST /api/mcp  (@payloadcms/plugin-mcp)
-                                          │
-                                          ▼
-                       Payload Local API → Posts / Tasks
+┌──────────────────────────────────────────────────────────────────────────┐
+│ Browser — Payload admin, custom view /admin/eve (React 19 + AI Elements)   │
+│                                                                            │
+│  VOICE (optional, hands-free):                                             │
+│    mic ─► Silero VAD ─► WAV ─────────────────────► POST /api/eve/transcribe│
+│    assistant stream ─► sentence splitter ────────► POST /api/eve/speak     │
+│       ◄──── sequential audio playback + barge-in ◄───────┘                 │
+│                                                                            │
+│  CHAT:  EveView (server) ─► EveChat (useChat) ───► POST /api/eve           │
+└───────────────┬────────────────────┬───────────────────────┬──────────────┘
+                ▼                    ▼                       ▼
+     /api/eve/route.ts     /api/eve/transcribe       /api/eve/speak
+     payload.auth()        payload.auth()            payload.auth()   ← all admin-only
+     load/create Convo          │                         │
+     streamText(model,          └────► src/eve/audio.ts ◄──┘
+       tools, system)                  (OpenAI /v1/audio/{transcriptions,speech})
+     persist UIMessage[]                     │                  │
+        │             │                      ▼                  ▼
+ provider.ts ▼        ▼ mcp-client.ts   STT: speaches      TTS: kokoro-fastapi
+ (anthropic |    POST /api/mcp           (:8000)            (:8880)
+  openai |       (@payloadcms/plugin-mcp)
+  ollama :11434)      ▼
+                 Payload Local API → Posts / Tasks
 ```
 
 The agent lives at `/admin/eve`, a custom Payload admin view. The UI is built with Vercel AI Elements and `useChat`, which streams to `POST /api/eve`. The route handler authenticates the admin user via `payload.auth()`, opens an HTTP MCP client pointed at Payload's own `/api/mcp` endpoint (served by `@payloadcms/plugin-mcp`), passes the MCP tools to `streamText`, streams the response back to the browser, and persists the conversation to a `Conversations` collection.
+
+**Voice (optional):** when enabled, the browser captures speech with [Silero VAD](https://github.com/ricky0123/vad), encodes the utterance to WAV, and posts it to `POST /api/eve/transcribe`; the transcript is sent through the same `useChat` flow. As the reply streams, a sentence splitter feeds `POST /api/eve/speak` and plays the audio in a FIFO queue with barge-in. Both routes reuse the same `payload.auth()` gate and forward to STT (`speaches`) and TTS (`kokoro-fastapi`) through `src/eve/audio.ts`, which speaks the **OpenAI audio API** (`/v1/audio/transcriptions`, `/v1/audio/speech`) — so the engines are swappable by env, never exposed to the browser. STT and TTS are each optional (attached only when their base URL is set). See [Voice (hands-free STT + TTS)](#voice-hands-free-stt--tts--optional).
 
 The agent manages two demo collections — `Posts` and `Tasks` — exposed over MCP with find, create, and update operations (no delete). In Payload v4 the MCP plugin exposes **every** collection by default (an opt-out model), so the config explicitly locks down `Users`, `Media`, and `Conversations` — only `Posts` and `Tasks` are reachable over MCP. See `src/payload.config.ts`.
 

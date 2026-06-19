@@ -50,6 +50,13 @@ describe('POST /api/eve/transcribe', () => {
     expect(await res.json()).toEqual({ text: 'hello world' })
   })
 
+  it('400 when no file is provided', async () => {
+    m.auth.mockResolvedValue({ user: { collection: 'users' } })
+    const emptyFd = new FormData()
+    const req = new Request('http://x/api/eve/transcribe', { method: 'POST', body: emptyFd })
+    expect((await POST(req)).status).toBe(400)
+  })
+
   it('503 when the STT service throws', async () => {
     m.auth.mockResolvedValue({ user: { collection: 'users' } })
     m.transcribe.mockRejectedValue(new Error('down'))

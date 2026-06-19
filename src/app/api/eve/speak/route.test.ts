@@ -32,6 +32,11 @@ describe('POST /api/eve/speak', () => {
     expect((await POST(jsonReq({ text: 'hi' }))).status).toBe(401)
   })
 
+  it('403 for non-users collection', async () => {
+    m.auth.mockResolvedValue({ user: { collection: 'payload-mcp-api-keys' } })
+    expect((await POST(jsonReq({ text: 'hi' }))).status).toBe(403)
+  })
+
   it('503 when TTS is not attached', async () => {
     m.getEveConfig.mockReturnValue({ ttsBaseURL: undefined })
     expect((await POST(jsonReq({ text: 'hi' }))).status).toBe(503)

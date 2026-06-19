@@ -179,14 +179,26 @@ points at your host (Ollama, Mongo, stt/tts). Use the in-container `payload` ser
 only if you switch the `.env` hostnames to the compose service names (`mongo`,
 `stt`, `tts`) and point Ollama at `host.docker.internal`.
 
-**One-time: download the STT model.** Unlike Ollama, `speaches` does not auto-pull
-models — calling it before the model is installed returns a 404. Download it once
-(it persists in the `hf-cache` volume):
+#### Models
 
-    curl -X POST "http://localhost:8000/v1/models/Systran/faster-whisper-small"
+Models live in `./models/<service>/`, bind-mounted into the containers so they're
+portable — **copy a folder to another machine and the app skips the download.**
 
-Sanity-check both services (the STT list should now include the model; Kokoro
-preloads its weights):
+- **STT** → `./models/stt/` (mounted at the speaches HF cache). `speaches` does **not**
+  auto-download (unlike Ollama); calling it before the model is present returns a 404.
+  Download `Systran/faster-whisper-small` once — it lands in `./models/stt/`:
+
+      curl -X POST "http://localhost:8000/v1/models/Systran/faster-whisper-small"
+
+  Source: <https://huggingface.co/Systran/faster-whisper-small>. To use a different
+  model, set `STT_MODEL` in `.env`, pull that id the same way, and restart.
+- **TTS** → nothing to download. The Kokoro model is **baked into the
+  `kokoro-fastapi` image**, so there's no `./models/tts/` folder.
+
+Already have the models from another machine? Just drop the folder into
+`./models/stt/` before `docker compose --profile voice up` — no download needed.
+
+Sanity-check both services:
 
     curl -s localhost:8000/v1/models   # STT — should list Systran/faster-whisper-small
     curl -s localhost:8880/v1/models   # TTS

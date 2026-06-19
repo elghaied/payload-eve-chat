@@ -1,5 +1,3 @@
-version: '3'
-
 services:
   payload:
     image: node:24-alpine
@@ -36,7 +34,9 @@ services:
     ports:
       - '8000:8000'
     volumes:
-      - hf-cache:/home/ubuntu/.cache/huggingface/hub
+      # STT models live in the repo at ./models/stt so they're portable/shareable.
+      # speaches does NOT auto-download — see README to pull Systran/faster-whisper-small.
+      - ./models/stt:/home/ubuntu/.cache/huggingface/hub
     deploy:
       resources:
         reservations:
@@ -52,6 +52,7 @@ services:
     profiles: ['voice']
     ports:
       - '8880:8880'
+    # The Kokoro model is baked into the image — no model folder/download needed.
     deploy:
       resources:
         reservations:
@@ -72,5 +73,4 @@ services:
 volumes:
   data:
   # pgdata:
-  hf-cache:
   node_modules:

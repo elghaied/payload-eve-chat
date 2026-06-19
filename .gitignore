@@ -57,3 +57,7 @@ node_modules/
 
 # Voice assets copied from node_modules by scripts/copy-vad-assets.mjs (regenerated; not source)
 /public/vad/
+
+# Voice STT model weights (large; download or copy per README). Keep the folder, not its contents.
+/models/stt/*
+!/models/stt/.gitkeep

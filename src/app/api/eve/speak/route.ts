@@ -31,7 +31,7 @@ export async function POST(req: Request): Promise<Response> {
   try {
     const upstream = await synthesize({ text: body.text, voice: body.voice, config: eveConfig })
     if (!upstream.body) {
-      payload.logger.error({ msg: 'Eve TTS returned no audio body' })
+      payload.logger.error({ msg: 'Eve TTS returned no audio body', err: null })
       return Response.json({ error: 'Speech synthesis failed' }, { status: 503 })
     }
     return new Response(upstream.body, {

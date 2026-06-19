@@ -11,6 +11,7 @@ type UseVoiceArgs = {
   ttsAvailable: boolean // server attached a TTS service
   status: string // useChat status ('streaming' | 'submitted' | 'ready' | 'error')
   assistantText: string | undefined // latest streaming assistant message text
+  assistantMessageId: string | undefined // id of the latest assistant message (resets the streamer per turn)
   onTranscript: (text: string) => void // -> sendMessage
 }
 
@@ -21,19 +22,34 @@ type UseVoiceArgs = {
  * and resumes listening. STT and TTS are each optional; the not-attached cases notify
  * via the admin toast. Browser-only; relies on getUserMedia + Web Audio + @ricky0123/vad-web.
  */
-export function useVoice({ sttAvailable, ttsAvailable, status, assistantText, onTranscript }: UseVoiceArgs) {
+export function useVoice({
+  sttAvailable,
+  ttsAvailable,
+  status,
+  assistantText,
+  assistantMessageId,
+  onTranscript,
+}: UseVoiceArgs) {
   const [active, setActive] = useState(false)
   const [state, setState] = useState<VoiceState>('idle')
 
   const vadRef = useRef<{ start: () => void; pause: () => void; destroy: () => void } | null>(null)
   const streamerRef = useRef(createSentenceStreamer())
+  // Tracks which assistant message the streamer is currently consuming, so a new
+  // turn (voice or text) resets the streamer instead of applying a stale cursor.
+  const lastAssistantIdRef = useRef<string | undefined>(undefined)
   const queueRef = useRef<HTMLAudioElement[]>([])
   const playingRef = useRef(false)
-  const speakAbortRef = useRef<AbortController | null>(null)
+  // Strict FIFO speak pipeline: at most one /speak fetch in flight at a time.
+  const pendingSpeakRef = useRef<string[]>([]) // queued sentence texts awaiting a fetch
+  const speakingFetchRef = useRef(false) // a /speak fetch is currently running
+  const speakAbortRef = useRef<AbortController | null>(null) // the one in-flight fetch
   const transcribeAbortRef = useRef<AbortController | null>(null)
   // Use a stable ref so the recursive playNext call avoids the
   // react-hooks/immutability forward-reference and render-time-ref-write rules.
   const playNextRef = useRef<() => void>(null)
+  // Same pattern for the self-recursive pumpSpeak (finally -> pumpSpeak again).
+  const pumpSpeakRef = useRef<() => void>(null)
 
   const playNext = useCallback(() => {
     if (playingRef.current) return
@@ -61,8 +77,11 @@ export function useVoice({ sttAvailable, ttsAvailable, status, assistantText, on
   })
 
   const clearPlayback = useCallback(() => {
+    // Barge-in / stop: cancel the in-flight fetch and drop the whole speak queue.
     speakAbortRef.current?.abort()
     speakAbortRef.current = null
+    speakingFetchRef.current = false
+    pendingSpeakRef.current = []
     for (const a of queueRef.current) {
       URL.revokeObjectURL(a.src)
       a.pause()
@@ -72,11 +91,16 @@ export function useVoice({ sttAvailable, ttsAvailable, status, assistantText, on
     playingRef.current = false
   }, [])
 
-  const speakSentence = useCallback(
-    async (sentence: string) => {
-      const controller = new AbortController()
-      speakAbortRef.current?.abort()
-      speakAbortRef.current = controller
+  // Drain the FIFO speak queue one sentence at a time: exactly one /speak fetch
+  // runs at a time, so sentences are fetched (and thus queued for playback) in
+  // strict order. The finally re-pumps to process the next queued sentence.
+  const pumpSpeak = useCallback(() => {
+    if (speakingFetchRef.current || pendingSpeakRef.current.length === 0) return
+    const sentence = pendingSpeakRef.current.shift()!
+    speakingFetchRef.current = true
+    const controller = new AbortController()
+    speakAbortRef.current = controller
+    void (async () => {
       try {
         const res = await fetch('/api/eve/speak', {
           method: 'POST',
@@ -84,21 +108,39 @@ export function useVoice({ sttAvailable, ttsAvailable, status, assistantText, on
           body: JSON.stringify({ text: sentence }),
           signal: controller.signal,
         })
-        if (!res.ok) return
-        const blob = await res.blob()
-        const blobUrl = URL.createObjectURL(blob)
-        queueRef.current.push(new Audio(blobUrl))
-        playNext()
+        if (res.ok) {
+          const blob = await res.blob()
+          const blobUrl = URL.createObjectURL(blob)
+          queueRef.current.push(new Audio(blobUrl))
+          playNext()
+        }
       } catch {
         // aborted (barge-in) or network error: ignore, stay responsive
+      } finally {
+        speakingFetchRef.current = false
+        pumpSpeakRef.current?.()
       }
+    })()
+  }, [playNext])
+
+  // Keep the ref in sync so the finally above can re-enter pumpSpeak.
+  useEffect(() => {
+    pumpSpeakRef.current = pumpSpeak
+  })
+
+  const enqueueSpeak = useCallback(
+    (sentence: string) => {
+      pendingSpeakRef.current.push(sentence)
+      pumpSpeak()
     },
-    [playNext],
+    [pumpSpeak],
   )
 
   const handleUtterance = useCallback(
     async (pcm: Float32Array) => {
       setState('transcribing')
+      // Abort any prior in-flight transcribe so two rapid utterances don't race.
+      transcribeAbortRef.current?.abort()
       const controller = new AbortController()
       transcribeAbortRef.current = controller
       try {
@@ -117,7 +159,8 @@ export function useVoice({ sttAvailable, ttsAvailable, status, assistantText, on
         const { text } = (await res.json()) as { text: string }
         if (text.trim()) {
           setState('thinking')
-          streamerRef.current = createSentenceStreamer()
+          // Streamer reset is handled by the assistant-message-id change in the
+          // push effect below (covers both voice and text-typed turns).
           onTranscript(text)
         } else {
           setState('listening')
@@ -132,16 +175,22 @@ export function useVoice({ sttAvailable, ttsAvailable, status, assistantText, on
   // Feed streamed assistant text to TTS as sentences complete (only when TTS attached).
   useEffect(() => {
     if (!active || !ttsAvailable || !assistantText) return
-    for (const sentence of streamerRef.current.push(assistantText)) void speakSentence(sentence)
-  }, [assistantText, active, ttsAvailable, speakSentence])
+    // A new assistant turn (id change) means the streamer's consumed cursor is
+    // stale for this different string — reset before pushing the new text.
+    if (assistantMessageId !== lastAssistantIdRef.current) {
+      streamerRef.current = createSentenceStreamer()
+      lastAssistantIdRef.current = assistantMessageId
+    }
+    for (const sentence of streamerRef.current.push(assistantText)) enqueueSpeak(sentence)
+  }, [assistantText, assistantMessageId, active, ttsAvailable, enqueueSpeak])
 
   // Flush the trailing sentence when the LLM stream finishes.
   useEffect(() => {
     if (!active || !ttsAvailable) return
     if (status !== 'streaming' && status !== 'submitted') {
-      for (const sentence of streamerRef.current.flush()) void speakSentence(sentence)
+      for (const sentence of streamerRef.current.flush()) enqueueSpeak(sentence)
     }
-  }, [status, active, ttsAvailable, speakSentence])
+  }, [status, active, ttsAvailable, enqueueSpeak])
 
   const start = useCallback(async () => {
     // Guard: a hands-free loop needs speech input.

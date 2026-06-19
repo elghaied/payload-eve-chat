@@ -80,17 +80,22 @@ export const EveChat: React.FC<{
     },
   })
 
-  // Latest assistant message text (concatenated text parts) drives sentence-streamed TTS.
-  const assistantText = (() => {
+  // Latest assistant message text (concatenated text parts) + its id drive
+  // sentence-streamed TTS. Intentionally re-derived every render so it tracks the
+  // live streaming updates — do NOT wrap this in useMemo.
+  const { assistantText, assistantMessageId } = (() => {
     for (let i = messages.length - 1; i >= 0; i--) {
       if (messages[i].role === 'assistant') {
-        return messages[i].parts
-          .filter((p) => p.type === 'text')
-          .map((p) => (p as { text: string }).text)
-          .join('')
+        return {
+          assistantText: messages[i].parts
+            .filter((p) => p.type === 'text')
+            .map((p) => (p as { text: string }).text)
+            .join(''),
+          assistantMessageId: messages[i].id,
+        }
       }
     }
-    return undefined
+    return { assistantText: undefined, assistantMessageId: undefined }
   })()
 
   const voice = useVoice({
@@ -98,6 +103,7 @@ export const EveChat: React.FC<{
     ttsAvailable,
     status,
     assistantText,
+    assistantMessageId,
     onTranscript: (text) => sendMessage({ text }, { body: { conversationId } }),
   })
 
@@ -207,6 +213,7 @@ export const EveChat: React.FC<{
                 {voice.active ? <PhoneOffIcon className="size-4" /> : <MicIcon className="size-4" />}
               </PromptInputButton>
             </PromptInputTools>
+            {/* Enabled while generating (acts as Stop); otherwise needs input text. */}
             <PromptInputSubmit
               status={status}
               onStop={stop}

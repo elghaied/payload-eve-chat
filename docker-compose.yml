@@ -111,6 +111,14 @@ services:
               count: all
               capabilities: [gpu]
 
+  searxng:
+    image: searxng/searxng:latest
+    profiles: ['web', 'full']
+    ports:
+      - '8080:8080'
+    volumes:
+      - ./searxng:/etc/searxng:rw
+
   # Uncomment the following to use postgres
   # postgres:
   #   restart: always

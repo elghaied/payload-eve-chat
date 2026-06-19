@@ -18,6 +18,7 @@ export type EveConfig = {
   ttsVoice: string
   ttsFormat: string
   ttsApiKey?: string
+  searxngUrl?: string // undefined => web tools disabled
 }
 
 type Env = Record<string, string | undefined>
@@ -64,6 +65,7 @@ export function getEveConfig(env: Env = process.env): EveConfig {
     ttsVoice: env.TTS_VOICE || DEFAULT_TTS_VOICE,
     ttsFormat: env.TTS_FORMAT || DEFAULT_TTS_FORMAT,
     ttsApiKey: env.TTS_API_KEY,
+    searxngUrl: env.SEARXNG_URL,
   }
 
   if (provider === 'anthropic' && !config.anthropicApiKey) {

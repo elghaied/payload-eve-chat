@@ -88,4 +88,11 @@ describe('getEveConfig', () => {
     expect(cfg.sttBaseURL).toBe('http://localhost:8000/v1')
     expect(cfg.ttsBaseURL).toBeUndefined()
   })
+
+  it('leaves searxngUrl undefined by default and reads it from env', () => {
+    expect(getEveConfig({ ANTHROPIC_API_KEY: 'k' }).searxngUrl).toBeUndefined()
+    expect(getEveConfig({ ANTHROPIC_API_KEY: 'k', SEARXNG_URL: 'http://localhost:8080' }).searxngUrl).toBe(
+      'http://localhost:8080',
+    )
+  })
 })

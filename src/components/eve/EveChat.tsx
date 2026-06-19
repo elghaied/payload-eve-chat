@@ -23,6 +23,7 @@ import { Tool, ToolContent, ToolHeader, ToolInput, ToolOutput } from '@/componen
 import { Reasoning } from '@/components/ai-elements/reasoning'
 import { ConversationSidebar, type ConversationSummary } from './ConversationSidebar'
 import { useVoice } from './useVoice'
+import { TooltipProvider } from '@/components/ui/tooltip'
 import { MicIcon, PhoneOffIcon } from 'lucide-react'
 import './eve.css'
 
@@ -126,6 +127,7 @@ export const EveChat: React.FC<{
   }
 
   return (
+    <TooltipProvider>
     <div className="eve-scope flex h-[calc(100dvh-var(--app-header-height,48px))] min-h-[600px]">
       <ConversationSidebar
         conversations={sidebarConversations}
@@ -223,5 +225,6 @@ export const EveChat: React.FC<{
         </PromptInput>
       </div>
     </div>
+    </TooltipProvider>
   )
 }

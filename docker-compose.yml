@@ -118,6 +118,8 @@ services:
       - '8080:8080'
     volumes:
       - ./searxng:/etc/searxng:rw
+    environment:
+      - SEARXNG_SECRET=${SEARXNG_SECRET:-please-change-this-local-secret}
 
   # Uncomment the following to use postgres
   # postgres:

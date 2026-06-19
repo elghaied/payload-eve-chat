@@ -240,6 +240,35 @@ worklet, and ONNX Runtime WASM) are **self-hosted, not loaded from a CDN**:
 and regenerated to match the installed versions — run `pnpm vad:assets` to
 refresh manually.
 
+### Changing the TTS voice
+
+Eve's spoken voice is the **`TTS_VOICE`** env var (default `af_sky`). Set it in
+`.env` and restart the app (`docker compose restart payload`, or restart `pnpm dev`).
+
+List the voices your Kokoro container provides:
+
+    curl -s localhost:8880/v1/audio/voices
+
+Kokoro ships ~67 voices, named `<lang+gender>_<name>` — e.g. `af_*` US female,
+`am_*` US male, `bf_*`/`bm_*` UK female/male, plus Spanish (`ef_/em_`), French
+(`ff_`), Hindi (`hf_/hm_`), Italian (`if_/im_`), Japanese (`jf_/jm_`), Portuguese
+(`pf_/pm_`), and Chinese (`zf_/zm_`). Popular English picks: `af_heart`, `af_bella`,
+`af_nicole`, `am_michael`, `bf_emma`, `bm_george`. The full voice list and samples
+live in the Kokoro-FastAPI project and the model card:
+
+- Voices & API: <https://github.com/remsky/Kokoro-FastAPI>
+- Model card (voice samples): <https://huggingface.co/hexgrad/Kokoro-82M>
+
+Audition one without restarting (writes an mp3 you can play):
+
+    curl -s localhost:8880/v1/audio/speech \
+      -H 'Content-Type: application/json' \
+      -d '{"model":"kokoro","input":"Hi, I am Eve.","voice":"af_bella","response_format":"mp3"}' \
+      --output sample.mp3
+
+Kokoro also accepts weighted **blends**, e.g. `TTS_VOICE=af_sky+af_bella` or
+`af_sarah(2)+af_nicole(1)`.
+
 ### Swapping models / providers (agnostic)
 
 STT and TTS are reached only through the OpenAI audio API

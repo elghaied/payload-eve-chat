@@ -51,3 +51,6 @@ node_modules/
 
 # Playwright MCP scratch output
 .playwright-mcp/
+
+# pnpm store written into the repo by the bind-mounted docker `payload` container (root-owned)
+.pnpm-store/

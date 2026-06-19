@@ -179,10 +179,16 @@ points at your host (Ollama, Mongo, stt/tts). Use the in-container `payload` ser
 only if you switch the `.env` hostnames to the compose service names (`mongo`,
 `stt`, `tts`) and point Ollama at `host.docker.internal`.
 
-The first request is slow: `speaches` downloads its Whisper model and Kokoro loads
-its weights into the `hf-cache` volume; both are cached afterward. Sanity-check:
+**One-time: download the STT model.** Unlike Ollama, `speaches` does not auto-pull
+models — calling it before the model is installed returns a 404. Download it once
+(it persists in the `hf-cache` volume):
 
-    curl -s localhost:8000/v1/models   # STT
+    curl -X POST "http://localhost:8000/v1/models/Systran/faster-whisper-small"
+
+Sanity-check both services (the STT list should now include the model; Kokoro
+preloads its weights):
+
+    curl -s localhost:8000/v1/models   # STT — should list Systran/faster-whisper-small
     curl -s localhost:8880/v1/models   # TTS
 
 **GPU (default):** the compose services use the `*-cuda` / `*-gpu` images and need

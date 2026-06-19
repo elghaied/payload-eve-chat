@@ -7,6 +7,10 @@ const __filename = fileURLToPath(import.meta.url)
 const dirname = path.dirname(__filename)
 
 const nextConfig: NextConfig = {
+  // jsdom + Readability are Node-only libs used server-side by readUrl (web search).
+  // Keep them external so Next/Turbopack require()s them at runtime instead of
+  // bundling (jsdom's dynamic requires don't bundle cleanly).
+  serverExternalPackages: ['jsdom', '@mozilla/readability'],
   images: {
     localPatterns: [
       {

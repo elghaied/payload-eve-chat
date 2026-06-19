@@ -5,6 +5,7 @@ import { getEveConfig } from '@/eve/config'
 import { resolveModel } from '@/eve/provider'
 import { createPayloadMcpTools } from '@/eve/mcp-client'
 import { proposePost } from '@/eve/propose-tool'
+import { createWebTools } from '@/eve/web-tools'
 import { EVE_SYSTEM_PROMPT, VOICE_REPLY_INSTRUCTION } from '@/eve/system-prompt'
 import { createConversation, loadConversation, saveMessages } from '@/eve/conversations'
 
@@ -55,7 +56,11 @@ export async function POST(req: Request): Promise<Response> {
   }
 
   const { tools: mcpTools, close } = await createPayloadMcpTools(eveConfig)
-  const tools = { ...mcpTools, proposePost }
+  const tools = {
+    ...mcpTools,
+    proposePost,
+    ...(eveConfig.searxngUrl ? createWebTools(eveConfig) : {}),
+  }
 
   const modelMessages = await convertToModelMessages(messages)
 

@@ -145,6 +145,58 @@ In **development**, the `/api/mcp` endpoint requires no API key — the config r
 
 In **production**, the MCP endpoint is protected by a Bearer API key. In Payload v4, MCP API keys are managed from the user menu under **Settings → Manage API keys** (they are no longer a standalone auth collection in the main nav). Create a key there, then set it as `MCP_API_KEY` in your production environment. Note: any MCP API key created before the v4 upgrade must be regenerated.
 
+## Voice (hands-free STT + TTS) — optional
+
+Eve supports an optional hands-free voice loop: speak your request (Silero VAD
+detects when you stop), it is transcribed and sent to the chat, and Eve's reply
+is spoken back sentence-by-sentence. Speaking while Eve talks (barge-in)
+interrupts playback. **Voice is entirely opt-in — without it, Eve is a normal
+text chat.**
+
+STT and TTS are independent: each is "attached" only when its base-URL env var is
+set. Set neither for chat-only; set one or both to enable that capability. With
+nothing attached, the mic button still appears but clicking it just explains that
+no speech service is connected.
+
+### Running the speech services
+
+Two OpenAI-compatible Docker services back voice, behind a compose `voice`
+profile so they only start when asked:
+
+- **STT** — `ghcr.io/speaches-ai/speaches` (faster-whisper) on `:8000`
+- **TTS** — `ghcr.io/remsky/kokoro-fastapi` (Kokoro) on `:8880`
+
+    docker compose --profile voice up -d
+
+**GPU (default):** the compose services use the `*-cuda` / `*-gpu` images and need
+an NVIDIA GPU exposed to Docker (nvidia-container-toolkit).
+
+**No GPU?** Switch each service to its CPU image and remove its `deploy:` block in
+`docker-compose.yml` (the alternatives are noted inline):
+
+- STT → `ghcr.io/speaches-ai/speaches:latest-cpu`
+- TTS → `ghcr.io/remsky/kokoro-fastapi-cpu:latest`
+
+CPU works fine for small models; synthesis/transcription is just slower.
+
+### Enabling voice
+
+Set the base URL(s) in `.env` (see `.env.example`); the mic button's voice loop
+then activates for whichever service is attached:
+
+    STT_BASE_URL=http://localhost:8000/v1
+    TTS_BASE_URL=http://localhost:8880/v1
+
+### Swapping models / providers (agnostic)
+
+STT and TTS are reached only through the OpenAI audio API
+(`/v1/audio/transcriptions`, `/v1/audio/speech`). To use a different engine or a
+cloud provider, change the base URL + model (and set an API key) — no code change:
+
+    # Example: OpenAI cloud
+    STT_BASE_URL=https://api.openai.com/v1   STT_MODEL=whisper-1        STT_API_KEY=sk-...
+    TTS_BASE_URL=https://api.openai.com/v1   TTS_MODEL=gpt-4o-mini-tts  TTS_VOICE=alloy  TTS_API_KEY=sk-...
+
 ## Questions
 
 If you have any issues or questions, reach out to us on [Discord](https://discord.com/invite/payload) or start a [GitHub discussion](https://github.com/payloadcms/payload/discussions).

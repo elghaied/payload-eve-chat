@@ -12,6 +12,15 @@ describe('isPrivateIp', () => {
   it('flags IPv6 loopback/ULA/link-local', () => {
     for (const ip of ['::1', 'fe80::1', 'fc00::1', 'fd12::1']) expect(isPrivateIp(ip)).toBe(true)
   })
+  it('flags full fe80::/10 link-local range (fea0, fe80) and allows public IPv6', () => {
+    expect(isPrivateIp('fea0::1')).toBe(true)
+    expect(isPrivateIp('fe80::1')).toBe(true)
+    expect(isPrivateIp('2001:4860:4860::8888')).toBe(false)
+  })
+  it('flags IPv4-mapped private addresses and allows public ones', () => {
+    expect(isPrivateIp('::ffff:10.0.0.1')).toBe(true)
+    expect(isPrivateIp('::ffff:8.8.8.8')).toBe(false)
+  })
 })
 
 describe('parseFetchableUrl', () => {
@@ -27,6 +36,10 @@ describe('parseFetchableUrl', () => {
     expect(() => parseFetchableUrl('http://printer.local')).toThrow()
     expect(() => parseFetchableUrl('http://192.168.0.1')).toThrow()
     expect(() => parseFetchableUrl('http://169.254.169.254/latest/meta-data')).toThrow()
+  })
+  it('rejects trailing-dot hostnames that bypass host checks', () => {
+    expect(() => parseFetchableUrl('http://localhost.')).toThrow()
+    expect(() => parseFetchableUrl('http://192.168.0.1.')).toThrow()
   })
 })
 

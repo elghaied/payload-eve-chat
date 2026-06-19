@@ -23,7 +23,9 @@ export function isPrivateIp(ip: string): boolean {
     if (ip6 === '::1' || ip6 === '::') return true
     const mapped = ip6.match(/^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/)
     if (mapped) return isPrivateIp(mapped[1])
-    return ip6.startsWith('fe80') || ip6.startsWith('fc') || ip6.startsWith('fd')
+    if (ip6.startsWith('fc') || ip6.startsWith('fd')) return true // fc00::/7 ULA
+    const firstHextet = parseInt(ip6.split(':')[0] || '0', 16)
+    return (firstHextet & 0xffc0) === 0xfe80 // fe80::/10 link-local
   }
   return false // not a literal IP
 }
@@ -39,7 +41,7 @@ export function parseFetchableUrl(raw: string): URL {
   if (url.protocol !== 'http:' && url.protocol !== 'https:') {
     throw new Error(`Only http(s) URLs are allowed: ${raw}`)
   }
-  const host = url.hostname.toLowerCase()
+  const host = url.hostname.toLowerCase().replace(/\.$/, '')
   if (host === 'localhost' || BLOCKED_HOST_SUFFIXES.some((s) => host.endsWith(s))) {
     throw new Error(`Blocked host: ${host}`)
   }

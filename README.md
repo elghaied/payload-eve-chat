@@ -4,6 +4,8 @@ A working example of an AI chat agent built inside Payload CMS. The agent ("Eve"
 
 See the [AI Chat Agent (Eve)](#ai-chat-agent-eve) section below for architecture details and environment setup.
 
+![Eve chat with the Claude.ai-style post preview panel](images/eve-chat-post-preview.png)
+
 ## Requirements
 
 This project targets **Payload v4** (currently pinned to the `canary` release) and requires **Node 24.15+** and **TypeScript 6+**. The previous Payload `3.85.1` version is preserved on the **`v3`** branch — check it out if you need the stable v3 release.
@@ -69,6 +71,10 @@ That's it! The Docker instance will help you get up and running quickly while al
 > Payload exposes its collections over MCP, and an in-admin chat agent built on the Vercel AI SDK operates the CMS entirely through those MCP tools — provider-swappable between Claude and GPT.
 
 ### Architecture
+
+![Eve architecture — in-admin AI agent for Payload: browser view, Next route handlers, server modules, and the AI/MCP/web-search/voice backends](images/eve-payload-architecture-hires.png)
+
+The diagram above is the high-level map; the text below traces the request flow in detail.
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────┐

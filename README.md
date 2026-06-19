@@ -166,7 +166,24 @@ profile so they only start when asked:
 - **STT** — `ghcr.io/speaches-ai/speaches` (faster-whisper) on `:8000`
 - **TTS** — `ghcr.io/remsky/kokoro-fastapi` (Kokoro) on `:8880`
 
-    docker compose --profile voice up -d
+The recommended setup runs the **app on your host** (`pnpm dev`) and uses Docker
+only for the speech services, so the `localhost` URLs below resolve directly:
+
+    # start only the speech services (and mongo, if you don't run it on the host)
+    docker compose --profile voice up -d mongo stt tts
+    pnpm dev
+
+Name the services explicitly as shown — a bare `docker compose up` also starts the
+`payload` container, which runs the app *inside* Docker where `localhost` no longer
+points at your host (Ollama, Mongo, stt/tts). Use the in-container `payload` service
+only if you switch the `.env` hostnames to the compose service names (`mongo`,
+`stt`, `tts`) and point Ollama at `host.docker.internal`.
+
+The first request is slow: `speaches` downloads its Whisper model and Kokoro loads
+its weights into the `hf-cache` volume; both are cached afterward. Sanity-check:
+
+    curl -s localhost:8000/v1/models   # STT
+    curl -s localhost:8880/v1/models   # TTS
 
 **GPU (default):** the compose services use the `*-cuda` / `*-gpu` images and need
 an NVIDIA GPU exposed to Docker (nvidia-container-toolkit).

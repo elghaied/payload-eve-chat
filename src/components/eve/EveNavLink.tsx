@@ -4,22 +4,14 @@ import { PayloadLink as Link } from '@payloadcms/ui'
 
 /**
  * A navigation link rendered in the Payload admin sidebar that points to the
- * Eve chat view at /admin/eve.
+ * Eve chat view at /admin/eve. Reuses Payload's own nav-link classes
+ * (`nav__link-wrapper` / `nav__link`) so it aligns with the collection links
+ * instead of hand-rolled padding.
  */
 export const EveNavLink: React.FC = () => {
   return (
-    <div style={{ padding: '0 var(--nav-group-padding-left, 12px) 4px' }}>
-      <Link
-        href="/admin/eve"
-        style={{
-          display: 'block',
-          padding: '6px 8px',
-          borderRadius: 4,
-          color: 'var(--color-base-700)',
-          textDecoration: 'none',
-          fontSize: '0.9rem',
-        }}
-      >
+    <div className="nav__link-wrapper">
+      <Link className="nav__link" href="/admin/eve">
         Eve Chat
       </Link>
     </div>

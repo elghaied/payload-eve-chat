@@ -13,6 +13,9 @@ importers:
       '@ai-sdk/anthropic':
         specifier: ^3.0.85
         version: 3.0.85(zod@4.4.3)
+      '@ai-sdk/groq':
+        specifier: 4.0.0-beta.54
+        version: 4.0.0-beta.54(zod@4.4.3)
       '@ai-sdk/mcp':
         specifier: ^1.0.52
         version: 1.0.52(zod@4.4.3)
@@ -235,6 +238,12 @@ packages:
 
   '@ai-sdk/gateway@4.0.0-beta.109':
     resolution: {integrity: sha512-W/1kLlPb6Bgbhwep3CA3R6do0HD7SXV5gyuz2XBLY1YABqgxYkw+IhEcjOYlmn9v+Tifjqy5yJqmWdSHMJhyPQ==}
+    engines: {node: '>=22'}
+    peerDependencies:
+      zod: ^3.25.76 || ^4.1.8
+
+  '@ai-sdk/groq@4.0.0-beta.54':
+    resolution: {integrity: sha512-A+Hs6NpzUuDhOQdoCqaiwMk+2kSBnvflald7bfEv1UTYI2kvk7H0ZrAs/jh4rAa6qkS3vXuOyEauXJNFAdv+rQ==}
     engines: {node: '>=22'}
     peerDependencies:
       zod: ^3.25.76 || ^4.1.8
@@ -7555,6 +7564,12 @@ snapshots:
       '@ai-sdk/provider': 4.0.0-beta.19
       '@ai-sdk/provider-utils': 5.0.0-beta.49(zod@4.4.3)
       '@vercel/oidc': 3.2.0
+      zod: 4.4.3
+
+  '@ai-sdk/groq@4.0.0-beta.54(zod@4.4.3)':
+    dependencies:
+      '@ai-sdk/provider': 4.0.0-beta.19
+      '@ai-sdk/provider-utils': 5.0.0-beta.49(zod@4.4.3)
       zod: 4.4.3
 
   '@ai-sdk/mcp@1.0.52(zod@4.4.3)':

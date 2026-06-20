@@ -7,6 +7,9 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     setupFiles: ['./vitest.setup.ts'],
-    include: ['tests/int/**/*.int.spec.ts', 'src/**/*.test.ts', 'agent/**/*.test.ts'],
+    // Note: do NOT include agent/** here — Eve discovers files under agent/ (e.g.
+    // agent/connections/*) as agent components, and a *.test.ts there breaks Eve's
+    // discovery. Tests for agent/ code live under src/ and import across the boundary.
+    include: ['tests/int/**/*.int.spec.ts', 'src/**/*.test.ts'],
   },
 })

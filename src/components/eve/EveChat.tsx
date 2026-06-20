@@ -20,13 +20,13 @@ import {
   PromptInputTextarea,
   PromptInputTools,
 } from '@/components/ai-elements/prompt-input'
-import { Tool, ToolContent, ToolHeader, ToolInput, ToolOutput } from '@/components/ai-elements/tool'
+import { ToolResultCard } from './ToolResultCard'
 import { Reasoning } from '@/components/ai-elements/reasoning'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { ConversationSidebar, type ConversationSummary } from './ConversationSidebar'
 import { InputRequestCard } from './InputRequestCard'
 import { ThinkingIndicator, ErrorNotice } from './ChatStatus'
-import { getPendingInput, humanizeToolName, type InputResponseValue } from './inputRequest'
+import { getPendingInput, type InputResponseValue } from './inputRequest'
 import { EqualizerBars } from './EqualizerBars'
 import { useVoice } from './useVoice'
 import { stripSpeak } from './speakable'
@@ -167,33 +167,9 @@ function renderToolPart(
     )
   }
 
-  const output =
-    part.state === 'output-available' ? (
-      <ToolOutput output={part.output} errorText={undefined} />
-    ) : part.state === 'output-error' ? (
-      <ToolOutput output={undefined} errorText={part.errorText} />
-    ) : part.state === 'output-denied' ? (
-      <div className="text-muted-foreground text-sm">
-        Denied{part.approval?.reason ? `: ${part.approval.reason}` : ''}
-      </div>
-    ) : null
-
-  // Collapse completed/running tool cards by default to reduce noise; only auto-open
-  // terminal failures. Show a humanized name ("Find documents") rather than the raw slug.
-  return (
-    <Tool key={key} defaultOpen={part.state === 'output-error' || part.state === 'output-denied'}>
-      <ToolHeader
-        type="dynamic-tool"
-        toolName={part.toolName}
-        title={humanizeToolName(part.toolMetadata?.eve?.name ?? part.toolName)}
-        state={part.state}
-      />
-      <ToolContent>
-        <ToolInput input={part.input} />
-        {output}
-      </ToolContent>
-    </Tool>
-  )
+  // Purpose-built result UI (clickable search links, fetched-URL preview, "Created task →
+  // admin link", etc.) for every other tool state — never a raw-JSON dump.
+  return <ToolResultCard key={key} part={part} />
 }
 
 // ── Loader: replay history (when reopening a thread) before mounting the hook ───

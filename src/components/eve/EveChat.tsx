@@ -3,7 +3,6 @@ import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from '@payloadcms/ui'
 import { useEveAgent } from 'eve/react'
 import type { EveDynamicToolPart } from 'eve/react'
-import { MicIcon } from 'lucide-react'
 import {
   Conversation,
   ConversationContent,
@@ -13,7 +12,6 @@ import {
 import { Message, MessageContent, MessageResponse } from '@/components/ai-elements/message'
 import {
   PromptInput,
-  PromptInputButton,
   PromptInputFooter,
   type PromptInputMessage,
   PromptInputSubmit,
@@ -27,7 +25,7 @@ import { ConversationSidebar, type ConversationSummary } from './ConversationSid
 import { InputRequestCard } from './InputRequestCard'
 import { ThinkingIndicator, ErrorNotice } from './ChatStatus'
 import { getPendingInput, type InputResponseValue } from './inputRequest'
-import { EqualizerBars } from './EqualizerBars'
+import { VoiceButton } from './VoiceButton'
 import { useVoice } from './useVoice'
 import { stripSpeak } from './speakable'
 import './eve.css'
@@ -279,8 +277,8 @@ const EveChatInner: React.FC<EveChatProps & { initialEvents: unknown[]; voiceAva
     onTranscript: (text) => {
       void agent.send({ message: text, clientContext: VOICE_REPLY_INSTRUCTION })
     },
-    onBargeIn: () => {
-      // Stop the current agent streaming turn when the user starts speaking.
+    onInterrupt: () => {
+      // Pressing to talk while a turn is in flight stops it so the new request takes over.
       agent.stop()
     },
   })
@@ -424,26 +422,8 @@ const EveChatInner: React.FC<EveChatProps & { initialEvents: unknown[]; voiceAva
           <PromptInputFooter>
             {voiceAvailable && (
               <PromptInputTools>
-                <PromptInputButton
-                  onClick={() => voice.toggle()}
-                  tooltip={voice.active ? 'Stop voice' : 'Start voice'}
-                  aria-label={voice.active ? 'Stop voice' : 'Start voice'}
-                  aria-pressed={voice.active}
-                  className={voice.active ? 'text-primary' : ''}
-                >
-                  {voice.active ? (
-                    <EqualizerBars
-                      className={
-                        voice.state === 'thinking' || voice.state === 'speaking'
-                          ? 'opacity-50'
-                          : ''
-                      }
-                    />
-                  ) : (
-                    <MicIcon className="size-4" />
-                  )}
-                </PromptInputButton>
-                {voice.active && (
+                <VoiceButton voice={voice} />
+                {voice.listening && (
                   <span className="text-muted-foreground text-xs" role="status">
                     {voice.state === 'speaking'
                       ? 'Speaking…'

@@ -7,21 +7,18 @@ import { extractSpeak, stripForSpeech } from './speakable'
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
+// Push-to-talk STT: the mic is only open while the user holds the button/key, so there's no
+// need for VAD endpointing/barge-in (which caused echo-driven false interrupts). We just
+// stream audio while held, then Finalize to flush the transcript on release.
 const DG_STT_URL =
   'wss://api.deepgram.com/v1/listen' +
-  '?model=nova-3' +
-  '&language=en' +
-  '&interim_results=true' +
-  '&endpointing=300' +
-  '&utterance_end_ms=1000' +
-  '&vad_events=true' +
-  '&smart_format=true' +
-  '&punctuate=true'
+  '?model=nova-3&language=en&interim_results=true&smart_format=true&punctuate=true'
 
-// TTS goes through our server proxy (/api/deepgram/speak), NOT a browser WebSocket:
-// Deepgram /v1/auth/grant tokens are ASR-scoped only and Aura TTS rejects them, so TTS must
-// use the full API key, which stays server-side. The proxy returns linear16 PCM @ 24 kHz.
+// TTS goes through our server proxy (/api/deepgram/speak): Deepgram grant tokens are ASR-only
+// so Aura TTS needs the server-side key. Proxy returns linear16 PCM @ 24 kHz.
 const TTS_SAMPLE_RATE = 24000
+// After releasing PTT, wait briefly for Deepgram's trailing final transcript before submitting.
+const FINALIZE_WAIT_MS = 700
 
 // ── Public types ───────────────────────────────────────────────────────────────
 
@@ -36,20 +33,17 @@ export type UseVoiceArgs = {
   assistantText: string
   /** ID of the latest assistant message (resets the streamer per turn). */
   assistantMessageId: string | undefined
-  /** Called when a complete utterance is transcribed — send to the agent. */
+  /** Called with the final transcript when the user finishes a push-to-talk utterance. */
   onTranscript: (text: string) => void
-  /** Optional: called on barge-in so the caller can stop an in-flight agent turn. */
-  onBargeIn?: () => void
+  /** Called when the user starts talking while a turn is in flight, so the caller can stop it. */
+  onInterrupt?: () => void
 }
 
 // ── Internal helpers ───────────────────────────────────────────────────────────
 
 /** Fetch a short-lived Deepgram access token (STT only) from our server-side route. */
 async function fetchDeepgramToken(): Promise<string> {
-  const res = await fetch('/api/deepgram/token', {
-    method: 'POST',
-    credentials: 'same-origin',
-  })
+  const res = await fetch('/api/deepgram/token', { method: 'POST', credentials: 'same-origin' })
   if (!res.ok) {
     const body = (await res.json().catch(() => ({}))) as { error?: string }
     throw new Error(body.error ?? `Token request failed (${res.status})`)
@@ -61,32 +55,19 @@ async function fetchDeepgramToken(): Promise<string> {
 
 /** Decode a linear16 binary ArrayBuffer into a Float32Array for AudioContext. */
 export function decodeLinear16(buffer: ArrayBuffer): Float32Array {
-  // The byte length may be odd if a chunk split a sample; floor to whole samples.
   const usable = buffer.byteLength - (buffer.byteLength % 2)
   const int16 = new Int16Array(buffer, 0, usable / 2)
   const float32 = new Float32Array(int16.length)
-  for (let i = 0; i < int16.length; i++) {
-    float32[i] = int16[i]! / 32768
-  }
+  for (let i = 0; i < int16.length; i++) float32[i] = int16[i]! / 32768
   return float32
 }
 
 // ── Hook ───────────────────────────────────────────────────────────────────────
 
 /**
- * Hands-free voice loop for Eve using Deepgram cloud STT and Aura TTS.
- *
- * Flow:
- *   start() → getUserMedia + STT token → STT WebSocket (MediaRecorder sends blobs)
- *           → on speech_final/UtteranceEnd → onTranscript → agent sends reply
- *           → reply streams → sentence splitter → POST /api/deepgram/speak (server proxy)
- *           → linear16 PCM → AudioContext FIFO queue → playback
- *
- * Barge-in:
- *   STT SpeechStarted while TTS playing → stop audio, abort in-flight TTS fetches,
- *   call onBargeIn() so caller can abort the agent turn, state → listening.
- *
- * SSR safety: all browser APIs are guarded and accessed only in callbacks / effects.
+ * Push-to-talk voice for Eve: hold the mic (or a key) to talk; release to send. Deepgram STT
+ * while held → onTranscript on release. Eve's reply (for voice turns) is spoken via the Aura
+ * TTS server proxy. No VAD/barge-in: pressing to talk explicitly stops any current playback/turn.
  */
 export function useVoice({
   voiceAvailable,
@@ -94,32 +75,21 @@ export function useVoice({
   assistantText,
   assistantMessageId,
   onTranscript,
-  onBargeIn,
+  onInterrupt,
 }: UseVoiceArgs) {
-  const [active, setActive] = useState(false)
+  const [listening, setListening] = useState(false)
   const [state, setState] = useState<VoiceState>('idle')
 
-  // Mirror `active` into a ref so closures (e.g. sttWs.onclose) always read the live value.
-  const activeRef = useRef(false)
-  useEffect(() => {
-    activeRef.current = active
-  })
-
-  // Mirror the agent status so the long-lived STT message handler can tell whether a turn
-  // is in flight (it captures values at start() time, which would otherwise be stale).
+  // Live mirrors for long-lived handlers / async start.
+  const wantListeningRef = useRef(false) // user intent (set synchronously by press/release)
+  const startingRef = useRef(false)
   const statusRef = useRef(status)
+  const onTranscriptRef = useRef(onTranscript)
+  const onInterruptRef = useRef(onInterrupt)
   useEffect(() => {
     statusRef.current = status
-  })
-
-  // Latest-callback refs: the STT handler is created once in start() and must always call the
-  // CURRENT onTranscript/onBargeIn (which close over the live agent + session) — otherwise a
-  // transcript can be sent to a stale agent and silently do nothing.
-  const onTranscriptRef = useRef(onTranscript)
-  const onBargeInRef = useRef(onBargeIn)
-  useEffect(() => {
     onTranscriptRef.current = onTranscript
-    onBargeInRef.current = onBargeIn
+    onInterruptRef.current = onInterrupt
   })
 
   // ── STT refs ──────────────────────────────────────────────────────────────
@@ -127,13 +97,13 @@ export function useVoice({
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const micStreamRef = useRef<MediaStream | null>(null)
   const accumulatedRef = useRef('')
+  const finalizeTimerRef = useRef<number | null>(null)
 
   // ── TTS playback refs ───────────────────────────────────────────────────────
   const audioCtxRef = useRef<AudioContext | null>(null)
-  const pcmQueueRef = useRef<Float32Array[]>([]) // decoded PCM waiting to play
+  const pcmQueueRef = useRef<Float32Array[]>([])
   const isPlayingRef = useRef(false)
   const currentSourceRef = useRef<AudioBufferSourceNode | null>(null)
-  // Sequential TTS fetch queue (preserves sentence order; one request at a time).
   const ttsTextQueueRef = useRef<string[]>([])
   const ttsProcessingRef = useRef(false)
   const ttsAbortRef = useRef<AbortController | null>(null)
@@ -142,9 +112,10 @@ export function useVoice({
   const streamerRef = useRef(createSentenceStreamer())
   const lastAssistantIdRef = useRef<string | undefined>(undefined)
   const assistantMessageIdRef = useRef<string | undefined>(undefined)
-  // The message already on screen when voice was turned on — don't speak it.
+  // Speak only the reply to a voice (PTT) turn, not typed turns. Set on submit.
+  const speakReplyRef = useRef(false)
+  // The assistant message already on screen when a PTT turn was sent — don't speak it.
   const baselineAssistantIdRef = useRef<string | undefined>(undefined)
-
   useEffect(() => {
     assistantMessageIdRef.current = assistantMessageId
   })
@@ -152,25 +123,22 @@ export function useVoice({
   // ── AudioContext FIFO playback ─────────────────────────────────────────────
 
   const playNextRef = useRef<() => void>(() => {})
-
   const playNext = useCallback(() => {
     if (isPlayingRef.current) return
     const chunk = pcmQueueRef.current.shift()
     if (!chunk) {
       isPlayingRef.current = false
-      setState((s) => (s === 'speaking' ? 'listening' : s))
+      setState((s) => (s === 'speaking' ? 'idle' : s))
       return
     }
     const ctx = audioCtxRef.current
     if (!ctx) return
-
     isPlayingRef.current = true
     setState('speaking')
-
-    const audioBuffer = ctx.createBuffer(1, chunk.length, TTS_SAMPLE_RATE)
-    audioBuffer.getChannelData(0).set(chunk)
+    const buf = ctx.createBuffer(1, chunk.length, TTS_SAMPLE_RATE)
+    buf.getChannelData(0).set(chunk)
     const source = ctx.createBufferSource()
-    source.buffer = audioBuffer
+    source.buffer = buf
     source.connect(ctx.destination)
     source.onended = () => {
       isPlayingRef.current = false
@@ -180,21 +148,18 @@ export function useVoice({
     source.start()
     currentSourceRef.current = source
   }, [])
-
   useEffect(() => {
     playNextRef.current = playNext
   })
 
   const enqueueAudio = useCallback(
-    (float32: Float32Array) => {
-      if (float32.length === 0) return
-      pcmQueueRef.current.push(float32)
+    (f: Float32Array) => {
+      if (f.length === 0) return
+      pcmQueueRef.current.push(f)
       if (!isPlayingRef.current) playNext()
     },
     [playNext],
   )
-
-  // ── TTS: sequential fetch of synthesized sentences from the server proxy ─────
 
   const processTtsQueue = useCallback(async () => {
     if (ttsProcessingRef.current) return
@@ -214,15 +179,13 @@ export function useVoice({
             signal: ac.signal,
           })
           if (res.ok) {
-            const buf = await res.arrayBuffer()
-            enqueueAudio(decodeLinear16(buf))
-          } else if (res.status !== 0) {
+            enqueueAudio(decodeLinear16(await res.arrayBuffer()))
+          } else {
             const body = (await res.json().catch(() => ({}))) as { error?: string }
-            // Surface once; keep draining the queue (which clears on barge-in/stop).
             toast.error(`Voice: ${body.error ?? "Eve's reply couldn't be spoken."}`)
           }
         } catch {
-          // aborted (barge-in/stop) or network error — drop this sentence.
+          // aborted (interrupt/stop) or network error
         } finally {
           ttsAbortRef.current = null
         }
@@ -232,7 +195,7 @@ export function useVoice({
     }
   }, [enqueueAudio])
 
-  const speakText = useCallback(
+  const speak = useCallback(
     (sentence: string) => {
       const cleaned = stripForSpeech(sentence)
       if (!cleaned.trim()) return
@@ -242,13 +205,11 @@ export function useVoice({
     [processTtsQueue],
   )
 
-  // ── Clear TTS playback + pending synthesis (barge-in or stop) ───────────────
-
   const clearPlayback = useCallback(() => {
     try {
       currentSourceRef.current?.stop()
     } catch {
-      // ignore "already stopped"
+      // already stopped
     }
     currentSourceRef.current = null
     isPlayingRef.current = false
@@ -257,182 +218,155 @@ export function useVoice({
     ttsAbortRef.current?.abort()
   }, [])
 
-  // ── Speak the assistant reply as it streams ─────────────────────────────────
-  // We do NOT depend on the model wrapping text in <speak> (Claude/most models won't);
-  // if a <speak> block is present we use its contents, otherwise we speak the whole reply.
-
+  // ── Speak the reply to a voice turn as it streams ───────────────────────────
   useEffect(() => {
-    if (!active || !assistantText) return
+    if (!speakReplyRef.current || !assistantText) return
     if (assistantMessageId === baselineAssistantIdRef.current) return
-
     if (assistantMessageId !== lastAssistantIdRef.current) {
       streamerRef.current = createSentenceStreamer()
       lastAssistantIdRef.current = assistantMessageId
     }
     const spoken = extractSpeak(assistantText) ?? assistantText
-    for (const sentence of streamerRef.current.push(spoken)) speakText(sentence)
-  }, [assistantText, assistantMessageId, active, speakText])
+    for (const s of streamerRef.current.push(spoken)) speak(s)
+  }, [assistantText, assistantMessageId, speak])
 
-  // When the turn finishes, flush the trailing partial sentence.
   useEffect(() => {
-    if (!active) return
+    if (!speakReplyRef.current) return
     if (assistantMessageId === baselineAssistantIdRef.current) return
     if (status === 'streaming' || status === 'submitted') return
-    for (const sentence of streamerRef.current.flush()) speakText(sentence)
-  }, [status, assistantMessageId, active, speakText])
+    for (const s of streamerRef.current.flush()) speak(s)
+    speakReplyRef.current = false // spoken this voice reply; don't speak subsequent typed turns
+  }, [status, assistantMessageId, speak])
 
-  // ── start() ────────────────────────────────────────────────────────────────
+  // ── Teardown of the STT capture side only (keeps AudioContext for playback) ──
+  const teardownCapture = useCallback(() => {
+    if (finalizeTimerRef.current != null) {
+      window.clearTimeout(finalizeTimerRef.current)
+      finalizeTimerRef.current = null
+    }
+    try {
+      mediaRecorderRef.current?.stop()
+    } catch {
+      // ignore
+    }
+    mediaRecorderRef.current = null
+    micStreamRef.current?.getTracks().forEach((t) => t.stop())
+    micStreamRef.current = null
+    try {
+      sttWsRef.current?.close()
+    } catch {
+      // ignore
+    }
+    sttWsRef.current = null
+  }, [])
 
-  const start = useCallback(async () => {
+  // ── startListening (push) ────────────────────────────────────────────────────
+  const startListening = useCallback(async () => {
     if (typeof window === 'undefined') return
     if (!voiceAvailable) {
       toast.error('Voice not configured (DEEPGRAM_API_KEY missing).')
       return
     }
+    wantListeningRef.current = true
+    if (startingRef.current || sttWsRef.current) return
+    startingRef.current = true
 
-    // Baseline: don't speak the message already on screen.
+    // Pressing to talk interrupts Eve: stop any TTS + any in-flight turn.
+    clearPlayback()
+    if (statusRef.current === 'submitted' || statusRef.current === 'streaming') {
+      onInterruptRef.current?.()
+    }
     baselineAssistantIdRef.current = assistantMessageIdRef.current
+    accumulatedRef.current = ''
 
-    let stream: MediaStream
     try {
-      stream = await navigator.mediaDevices.getUserMedia({
+      const stream = await navigator.mediaDevices.getUserMedia({
         audio: { echoCancellation: true, noiseSuppression: true },
         video: false,
       })
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Microphone unavailable')
-      return
-    }
-    micStreamRef.current = stream
+      if (!wantListeningRef.current) {
+        stream.getTracks().forEach((t) => t.stop())
+        return
+      }
+      micStreamRef.current = stream
 
-    // STT token (TTS uses the server proxy, no token needed).
-    let sttToken: string
-    try {
-      sttToken = await fetchDeepgramToken()
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Could not start voice')
-      stream.getTracks().forEach((t) => t.stop())
-      return
-    }
-
-    // Create + resume the AudioContext within the user gesture so playback isn't suspended.
-    const ctx = new AudioContext({ sampleRate: TTS_SAMPLE_RATE })
-    audioCtxRef.current = ctx
-    try {
-      await ctx.resume()
-    } catch {
-      // some browsers auto-run; ignore
-    }
-
-    // Open STT WebSocket. Subprotocol ['bearer', token] for short-lived access tokens.
-    const sttWs = new WebSocket(DG_STT_URL, ['bearer', sttToken])
-    sttWs.binaryType = 'arraybuffer'
-    sttWsRef.current = sttWs
-
-    sttWs.onmessage = (ev) => {
-      if (typeof ev.data !== 'string') return
-      let msg: Record<string, unknown>
-      try {
-        msg = JSON.parse(ev.data) as Record<string, unknown>
-      } catch {
+      const token = await fetchDeepgramToken()
+      if (!wantListeningRef.current) {
+        stream.getTracks().forEach((t) => t.stop())
+        micStreamRef.current = null
         return
       }
 
-      const msgType = msg['type'] as string | undefined
+      // Lazily create + resume the AudioContext (within the user gesture) for later playback.
+      if (!audioCtxRef.current) {
+        audioCtxRef.current = new AudioContext({ sampleRate: TTS_SAMPLE_RATE })
+      }
+      await audioCtxRef.current.resume().catch(() => {})
 
-      if (msgType === 'Results') {
+      const ws = new WebSocket(DG_STT_URL, ['bearer', token])
+      ws.binaryType = 'arraybuffer'
+      sttWsRef.current = ws
+      ws.onmessage = (ev) => {
+        if (typeof ev.data !== 'string') return
+        let msg: Record<string, unknown>
+        try {
+          msg = JSON.parse(ev.data) as Record<string, unknown>
+        } catch {
+          return
+        }
+        if (msg['type'] !== 'Results') return
         const channel = msg['channel'] as Record<string, unknown> | undefined
         const alts = channel?.['alternatives'] as Array<{ transcript: string }> | undefined
         const transcript = alts?.[0]?.transcript ?? ''
-        const isFinal = msg['is_final'] as boolean | undefined
-        const speechFinal = msg['speech_final'] as boolean | undefined
-
-        if (isFinal && transcript) {
-          accumulatedRef.current += transcript + ' '
-        }
-        if (speechFinal) submitUtterance()
-      } else if (msgType === 'UtteranceEnd') {
-        // Backstop: submit if speech_final never fired.
-        submitUtterance()
+        if (msg['is_final'] && transcript) accumulatedRef.current += transcript + ' '
       }
-      // NOTE: we intentionally do NOT act on `SpeechStarted` (pure VAD). It fires on Eve's own
-      // TTS echo and background noise, so using it to stop the turn killed real turns (Eve said
-      // "I'll search…" then her own voice triggered a barge-in that aborted before the search).
-      // Interruption is driven only by an actual transcript below.
-    }
+      ws.onerror = () => toast.error('Voice: STT connection error.')
 
-    // Submit a completed utterance. If a turn is already in flight, a REAL transcript means the
-    // user is interrupting → stop the current turn first, then send the new one (turn-taking
-    // without queuing). Driven by transcript (not VAD) so echo/noise can't kill a live turn.
-    function submitUtterance() {
-      const text = accumulatedRef.current.trim()
-      accumulatedRef.current = ''
-      if (!text) return
-      const agentBusy = statusRef.current === 'submitted' || statusRef.current === 'streaming'
-      clearPlayback()
-      if (agentBusy) onBargeInRef.current?.()
-      setState('thinking')
-      // Small delay when interrupting so the stop settles before the new turn starts.
-      if (agentBusy) {
-        window.setTimeout(() => onTranscriptRef.current(text), 80)
-      } else {
-        onTranscriptRef.current(text)
-      }
-    }
-
-    sttWs.onerror = () => {
-      toast.error('Voice: STT connection error.')
-    }
-
-    sttWs.onclose = () => {
-      if (activeRef.current) {
-        toast.error('Voice: STT disconnected.')
-      }
-    }
-
-    // Wait for STT WS to open before starting the MediaRecorder.
-    try {
       await new Promise<void>((resolve, reject) => {
-        if (sttWs.readyState === WebSocket.OPEN) {
-          resolve()
-        } else {
-          sttWs.addEventListener('open', () => resolve(), { once: true })
-          sttWs.addEventListener('error', () => reject(new Error('STT WS failed to open')), {
-            once: true,
-          })
-          sttWs.addEventListener('close', () => reject(new Error('STT WS closed before open')), {
-            once: true,
-          })
-        }
+        if (ws.readyState === WebSocket.OPEN) return resolve()
+        ws.addEventListener('open', () => resolve(), { once: true })
+        ws.addEventListener('error', () => reject(new Error('STT WS failed to open')), { once: true })
+        ws.addEventListener('close', () => reject(new Error('STT WS closed before open')), { once: true })
       })
+      if (!wantListeningRef.current) {
+        teardownCapture()
+        return
+      }
+
+      const recorder = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' })
+      mediaRecorderRef.current = recorder
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0 && ws.readyState === WebSocket.OPEN) ws.send(e.data)
+      }
+      recorder.start(250)
+
+      setListening(true)
+      setState('listening')
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Voice: STT failed to connect')
-      stream.getTracks().forEach((t) => t.stop())
-      sttWsRef.current = null
-      void ctx.close().catch(() => {})
-      audioCtxRef.current = null
+      toast.error(err instanceof Error ? err.message : 'Could not start voice')
+      teardownCapture()
+      setListening(false)
+      setState((s) => (s === 'listening' ? 'idle' : s))
+    } finally {
+      startingRef.current = false
+      // If the user released during async startup, stop now.
+      if (!wantListeningRef.current) {
+        teardownCapture()
+        setListening(false)
+      }
+    }
+  }, [voiceAvailable, clearPlayback, teardownCapture])
+
+  // ── stopListening (release) → finalize + submit ──────────────────────────────
+  const stopListening = useCallback(() => {
+    wantListeningRef.current = false
+    if (!sttWsRef.current && !mediaRecorderRef.current) {
+      setListening(false)
+      setState((s) => (s === 'listening' ? 'idle' : s))
       return
     }
+    setListening(false)
 
-    // Start MediaRecorder — sends webm/opus blobs (Deepgram auto-detects the format).
-    const recorder = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' })
-    mediaRecorderRef.current = recorder
-    recorder.ondataavailable = (ev) => {
-      if (ev.data.size > 0 && sttWs.readyState === WebSocket.OPEN) {
-        sttWs.send(ev.data)
-      }
-    }
-    recorder.start(250) // 250 ms chunks
-
-    setActive(true)
-    setState('listening')
-    // `active` intentionally omitted — we read activeRef.current inside closures.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [voiceAvailable, clearPlayback])
-
-  // ── stop() ─────────────────────────────────────────────────────────────────
-
-  const stop = useCallback(() => {
     try {
       mediaRecorderRef.current?.stop()
     } catch {
@@ -442,32 +376,53 @@ export function useVoice({
     micStreamRef.current?.getTracks().forEach((t) => t.stop())
     micStreamRef.current = null
 
-    sttWsRef.current?.close()
-    sttWsRef.current = null
+    const ws = sttWsRef.current
+    const submit = () => {
+      finalizeTimerRef.current = null
+      const text = accumulatedRef.current.trim()
+      accumulatedRef.current = ''
+      try {
+        ws?.close()
+      } catch {
+        // ignore
+      }
+      if (sttWsRef.current === ws) sttWsRef.current = null
+      if (text) {
+        speakReplyRef.current = true
+        setState('thinking')
+        onTranscriptRef.current(text)
+      } else {
+        setState((s) => (s === 'speaking' ? s : 'idle'))
+      }
+    }
 
-    clearPlayback()
-
-    void audioCtxRef.current?.close().catch(() => {})
-    audioCtxRef.current = null
-
-    accumulatedRef.current = ''
-    streamerRef.current = createSentenceStreamer()
-    lastAssistantIdRef.current = undefined
-
-    setActive(false)
-    setState('idle')
-  }, [clearPlayback])
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      try {
+        ws.send(JSON.stringify({ type: 'Finalize' }))
+      } catch {
+        // ignore
+      }
+      finalizeTimerRef.current = window.setTimeout(submit, FINALIZE_WAIT_MS)
+    } else {
+      submit()
+    }
+  }, [])
 
   const toggle = useCallback(() => {
-    if (active) {
-      stop()
-    } else {
-      void start()
+    if (wantListeningRef.current) stopListening()
+    else void startListening()
+  }, [startListening, stopListening])
+
+  // Full teardown on unmount.
+  useEffect(() => {
+    return () => {
+      wantListeningRef.current = false
+      teardownCapture()
+      clearPlayback()
+      void audioCtxRef.current?.close().catch(() => {})
+      audioCtxRef.current = null
     }
-  }, [active, start, stop])
+  }, [teardownCapture, clearPlayback])
 
-  // Tear everything down on unmount.
-  useEffect(() => () => stop(), [stop])
-
-  return { active, state, start, stop, toggle }
+  return { available: voiceAvailable, listening, state, startListening, stopListening, toggle }
 }

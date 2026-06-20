@@ -55,9 +55,6 @@ node_modules/
 # pnpm store written into the repo by the bind-mounted docker `payload` container (root-owned)
 .pnpm-store/
 
-# Voice assets copied from node_modules by scripts/copy-vad-assets.mjs (regenerated; not source)
-/public/vad/
-
 # Model weights under models/<service>/ (large; download or copy per README).
 # Keep the folders (via .gitkeep), ignore the weights.
 /models/*/*

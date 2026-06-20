@@ -26,6 +26,7 @@ import { TooltipProvider } from '@/components/ui/tooltip'
 import { ConversationSidebar, type ConversationSummary } from './ConversationSidebar'
 import { PostPreviewPanel } from './PostPreviewPanel'
 import { InputRequestCard } from './InputRequestCard'
+import { ThinkingIndicator, ErrorNotice } from './ChatStatus'
 import { getPendingInput, humanizeToolName, type InputResponseValue } from './inputRequest'
 import { findOpenableDraft } from './proposeDraft'
 import type { PostDraft } from '@/eve/approval-message'
@@ -219,12 +220,16 @@ function renderToolPart(
       <ToolOutput output={part.output} errorText={undefined} />
     ) : part.state === 'output-error' ? (
       <ToolOutput output={undefined} errorText={part.errorText} />
+    ) : part.state === 'output-denied' ? (
+      <div className="text-muted-foreground text-sm">
+        Denied{part.approval?.reason ? `: ${part.approval.reason}` : ''}
+      </div>
     ) : null
 
   // Collapse completed/running tool cards by default to reduce noise; only auto-open
-  // errors. Show a humanized name ("Find documents") rather than the raw slug.
+  // terminal failures. Show a humanized name ("Find documents") rather than the raw slug.
   return (
-    <Tool key={key} defaultOpen={part.state === 'output-error'}>
+    <Tool key={key} defaultOpen={part.state === 'output-error' || part.state === 'output-denied'}>
       <ToolHeader
         type="dynamic-tool"
         toolName={part.toolName}
@@ -417,6 +422,23 @@ const EveChatInner: React.FC<EveChatProps & { initialEvents: unknown[]; voiceAva
   )
   const agentBusy = agent.status === 'submitted' || agent.status === 'streaming'
 
+  // Retry after a failed turn by re-sending the most recent user message.
+  const handleRetry = useCallback(() => {
+    const messages = agent.data.messages
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const m = messages[i]
+      if (m.role !== 'user') continue
+      const text = m.parts
+        .map((p) => (p.type === 'text' ? p.text : ''))
+        .join('')
+        .trim()
+      if (text) {
+        void agent.send({ message: text })
+        return
+      }
+    }
+  }, [agent])
+
   return (
     <TooltipProvider>
     <div className="eve-scope flex h-[calc(100dvh-var(--app-header-height,48px))] min-h-[600px]">
@@ -479,6 +501,10 @@ const EveChatInner: React.FC<EveChatProps & { initialEvents: unknown[]; voiceAva
                 )
               })
             )}
+            {agent.status === 'submitted' && <ThinkingIndicator />}
+            {agent.status === 'error' && (
+              <ErrorNotice message={agent.error?.message} onRetry={handleRetry} />
+            )}
           </ConversationContent>
           <ConversationScrollButton />
         </Conversation>
@@ -511,6 +537,15 @@ const EveChatInner: React.FC<EveChatProps & { initialEvents: unknown[]; voiceAva
                     <MicIcon className="size-4" />
                   )}
                 </PromptInputButton>
+                {voice.active && (
+                  <span className="text-muted-foreground text-xs" role="status">
+                    {voice.state === 'speaking'
+                      ? 'Speaking…'
+                      : voice.state === 'thinking'
+                        ? 'Thinking…'
+                        : 'Listening…'}
+                  </span>
+                )}
               </PromptInputTools>
             )}
             <PromptInputSubmit

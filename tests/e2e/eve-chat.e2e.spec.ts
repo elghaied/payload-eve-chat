@@ -6,7 +6,7 @@
  *     reuseExistingServer is true so a pre-running `pnpm dev` is reused).
  *   - AI Gateway auth: VERCEL_OIDC_TOKEN (run `vercel env pull .env.local`) or
  *     AI_GATEWAY_API_KEY, with a credit card on the linked Vercel team.
- *   - EVE_MODEL set to a tool-calling model (default: openai/gpt-oss-120b via groq).
+ *   - EVE_MODEL set to a tool-calling model (default: anthropic/claude-haiku-4.5).
  *     NOTE: llama-3.3-70b-versatile emits malformed tool calls and WILL fail.
  *   - MongoDB accessible (MONGODB_URI in .env.local).
  *

@@ -435,30 +435,40 @@ would return 401 in production until replaced by a real auth provider (Task 4).
 
 ---
 
-## 12. Model: Vercel AI Gateway (CURRENT — supersedes the earlier Groq-direct note)
+## 12. Model: Vercel AI Gateway, NATIVE-tools-first default (CURRENT)
 
-The project routes the model through the **Vercel AI Gateway** (a credit card was added to the
-linked Vercel team, which unlocks free credits). `agent/agent.ts`:
+The project routes the model through the **Vercel AI Gateway**. The default model is chosen so
+Eve's **provider-native built-in tools** (especially `web_search`) work out of the box — this is a
+template, so native-Eve-first wins over raw cost. `agent/agent.ts`:
 
 ```ts
 import { defineAgent } from "eve";
+const providerPin = process.env.EVE_PROVIDER
+  ? { providerOptions: { gateway: { only: [process.env.EVE_PROVIDER] } } }
+  : undefined;
 export default defineAgent({
-  model: process.env.EVE_MODEL || "openai/gpt-oss-120b",
-  modelOptions: {
-    providerOptions: { gateway: { only: [process.env.EVE_PROVIDER || "groq"] } },
-  },
+  model: process.env.EVE_MODEL || "anthropic/claude-haiku-4.5",
+  ...(providerPin ? { modelOptions: providerPin } : {}),
 });
 ```
 
-- `EVE_MODEL` is an AI Gateway slug (`provider/model`). `gpt-oss-120b`'s creator is "openai" but
-  OpenAI doesn't *serve* it on the gateway — it's served by groq/cerebras/etc — so the serving
-  provider MUST be pinned via `modelOptions.providerOptions.gateway.only` (`EVE_PROVIDER=groq`),
-  else the gateway errors "no available providers match only:openai".
-- Auth: `VERCEL_OIDC_TOKEN` from `vercel env pull .env.local` (expires ~12h) or `AI_GATEWAY_API_KEY`.
-- `llama-3.3-70b-versatile` emits MALFORMED tool calls (jams JSON args into the tool name) → avoid;
-  `moonshotai/kimi-k2-instruct` isn't on this Groq account. Use `openai/gpt-oss-120b`.
-- (Historical: an interim build used `@ai-sdk/groq` direct provider before the card was added;
-  that dependency is now removed and the gateway config above is authoritative.)
+- **Native web_search requires a model whose provider implements it** (Anthropic / OpenAI / Google).
+  `openai/gpt-oss-120b` served by Groq does NOT — the gateway warns "provider-defined tool
+  openai.web_search is not supported" and web_search is a no-op. We initially worked around this
+  with a custom `agent/tools/web_search.ts` (Perplexity Sonar via the gateway — same engine Eve's
+  gateway web_search uses, confirmed: `perplexitySearch` in `node_modules/eve/dist/src/harness/
+  provider-tools.js`), then dropped it in favor of going native (default model switched to Claude).
+- `EVE_PROVIDER` is now OPTIONAL — only set it to pin a serving provider for models whose creator
+  isn't the provider (e.g. gpt-oss → groq, else "no available providers match only:openai"). Native
+  models (Claude/GPT/Gemini) need no pin.
+- Billing: without BYOK the gateway uses Vercel's own provider integration and bills Vercel AI
+  Gateway credits; `gateway.only` is a routing pin, NOT a credential. BYOK is the separate opt-in to
+  bill your own provider account. Auth: `VERCEL_OIDC_TOKEN` (`vercel env pull`, ~12h TTL) or
+  `AI_GATEWAY_API_KEY`.
+- Cheaper native swaps via `EVE_MODEL`: `google/gemini-2.5-flash` ($0.30/$2.50 per 1M),
+  `openai/gpt-4o-mini` ($0.15/$0.60). `llama-3.3-70b` emits MALFORMED tool calls → avoid.
+- (Historical: interim builds used `@ai-sdk/groq` direct, then gpt-oss-120b via the gateway pinned
+  to groq. Superseded — Claude default is authoritative.)
 
 ---
 

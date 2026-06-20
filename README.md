@@ -1,11 +1,12 @@
 # Payload + Eve Chat Agent
 
-A working example of an AI chat agent built inside Payload CMS. The agent ("Eve") lives at
-`/admin/eve`, reads and writes Payload collections over MCP, and is built on the **Vercel Eve
-framework** (`vercel/eve`). The model is routed through the **Vercel AI Gateway**
-(`openai/gpt-oss-120b`, served by Groq, by default). The project is **Vercel-native** — every
-capability uses a hosted service (AI Gateway for the model, Deepgram for voice, Eve's built-in web
-search) so it deploys to Vercel with no Docker/self-hosted dependencies.
+A working example (and starter template) of an AI chat agent built inside Payload CMS. The agent
+("Eve") lives at `/admin/eve`, reads and writes Payload collections over MCP, and is built on the
+**Vercel Eve framework** (`vercel/eve`). The model is routed through the **Vercel AI Gateway**
+(`anthropic/claude-haiku-4.5` by default — chosen so Eve's **native** built-in tools like
+`web_search` work out of the box and tool calling for MCP is rock-solid). The project is
+**Vercel-native** — every capability uses a hosted service (AI Gateway for the model, Deepgram for
+voice, Eve's built-in web search) so it deploys to Vercel with no Docker/self-hosted dependencies.
 
 ![Eve chat in the Payload admin](images/eve-chat-post-preview.png)
 
@@ -18,9 +19,9 @@ search) so it deploys to Vercel with no Docker/self-hosted dependencies.
 - **Post preview (approve-before-create)** — when you ask Eve to write a post, it calls
   `propose_post` and shows an **editable** preview panel; the post is only created via
   `createDocumentFromMarkdown` after you review/edit and approve.
-- **Web search + read-URL** — `web_search` (a Perplexity Sonar model via the AI Gateway you
-  already configured — override with `WEB_SEARCH_MODEL`) and the built-in `web_fetch` (fetch any
-  URL as Markdown). No SearXNG, no extra key.
+- **Web search + read-URL** — Eve's **native** built-in `web_search` and `web_fetch` (fetch any URL
+  as Markdown), both through the AI Gateway. No SearXNG, no extra key. (Native `web_search` requires
+  a model whose provider supports it — the default Claude does; gpt-oss/Groq does not.)
 - **Hands-free voice** — streaming speech-to-text and text-to-speech via **Deepgram** (Nova-3 STT
   + Aura-2 TTS) with end-of-utterance detection and barge-in. The mic button appears when
   `DEEPGRAM_API_KEY` is configured. The key must have the **Member** role (or higher) — the
@@ -94,16 +95,24 @@ entirely client-side against Deepgram, using a 30-second token minted by the Pay
 ### Model & AI Gateway
 
 ```
-EVE_MODEL=openai/gpt-oss-120b   # any AI Gateway slug whose model supports tool calling
-EVE_PROVIDER=groq               # serving-provider pin (gpt-oss is served by groq/cerebras/...)
+EVE_MODEL=anthropic/claude-haiku-4.5   # default: native web_search + strong tool calling
+# EVE_PROVIDER=groq                     # optional serving-provider pin (only for models like
+                                        # openai/gpt-oss-120b whose creator isn't the provider)
 ```
+
+The default is chosen so **Eve's native built-in tools work out of the box** — `web_search` is a
+provider-native tool that only works on models whose provider implements it (Anthropic, OpenAI,
+Google do; **gpt-oss served by Groq does not**). Cheaper native swaps: `google/gemini-2.5-flash`,
+`openai/gpt-4o-mini`. Avoid models weak at tool calls (`llama-3.3-70b` emits malformed tool calls
+and breaks the MCP demo).
 
 Auth the gateway with `vercel link && vercel env pull .env.local` (writes `VERCEL_OIDC_TOKEN`,
 which expires ~12h — re-pull when gateway calls start returning auth errors) or set a stable
 `AI_GATEWAY_API_KEY`. The gateway needs a credit card on the linked Vercel team (unlocks free
-credits) and bills Vercel AI Gateway credits by default; to bill your own provider instead, add it
-under **AI Gateway → Bring Your Own Key**. Avoid models weak at tool calls (`llama-3.3-70b` emits
-malformed tool calls); `openai/gpt-oss-120b` works well.
+credits). **Without BYOK** the gateway relays to the provider via Vercel's own integration and bills
+your **Vercel AI Gateway credits** — you don't configure the provider (e.g. Groq/Anthropic)
+yourself. To bill your own provider account instead, add it under **AI Gateway → Bring Your Own
+Key**. (Provider web search also bills a small per-search fee on top of tokens.)
 
 ### MCP authentication: dev vs production
 

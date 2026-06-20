@@ -113,6 +113,20 @@ describe('POST /api/eve/session-index', () => {
     expect(updateConversationCursorMock).toHaveBeenCalledOnce()
   })
 
+  it('still updates and returns ok when create loses the unique race (throws)', async () => {
+    authMock.mockResolvedValue({ user: fakeUser })
+    loadConversationBySessionMock.mockResolvedValue(null) // looked empty...
+    createConversationMock.mockRejectedValue(new Error('duplicate key: eveSessionId')) // ...but a concurrent request created it
+    updateConversationCursorMock.mockResolvedValue(undefined)
+
+    const res = await POST(makeRequest({ eveSessionId: 'sess_race', continuationToken: 'tok', streamIndex: 1 }))
+
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ ok: true })
+    expect(createConversationMock).toHaveBeenCalledOnce()
+    expect(updateConversationCursorMock).toHaveBeenCalledOnce() // falls through to update
+  })
+
   it('updates only (no create) when conversation row already exists', async () => {
     authMock.mockResolvedValue({ user: fakeUser })
     loadConversationBySessionMock.mockResolvedValue({ id: '77', eveSessionId: 'sess_existing' })

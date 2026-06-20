@@ -34,7 +34,10 @@ export const Conversations: CollectionConfig = {
       required: true,
       index: true,
     },
-    { name: 'eveSessionId', type: 'text', index: true },
+    // Unique: one index row per Eve session. Prevents duplicate rows under a
+    // concurrent/double-submit upsert race (the second create fails the unique
+    // constraint; the session-index route catches it and updates instead).
+    { name: 'eveSessionId', type: 'text', index: true, unique: true },
     { name: 'continuationToken', type: 'text' },
     { name: 'streamIndex', type: 'number' },
   ],

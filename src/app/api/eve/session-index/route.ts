@@ -41,10 +41,16 @@ export async function POST(req: Request): Promise<Response> {
     title?: string
   }
 
-  // Upsert: find existing row, create if missing, then update cursor.
+  // Upsert: find existing row, create if missing, then update cursor. `eveSessionId` is
+  // unique, so a concurrent request that already created the row makes our create throw —
+  // catch it and fall through to the update (idempotent, no duplicate row).
   const existing = await loadConversationBySession(payload, eveSessionId, typedUser)
   if (!existing) {
-    await createConversation(payload, typedUser, title ?? 'New conversation', eveSessionId)
+    try {
+      await createConversation(payload, typedUser, title ?? 'New conversation', eveSessionId)
+    } catch {
+      // Lost the create race to a concurrent request; the row now exists — update below.
+    }
   }
   await updateConversationCursor(payload, eveSessionId, typedUser, {
     continuationToken,

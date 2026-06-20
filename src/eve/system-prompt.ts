@@ -36,7 +36,7 @@ Guidelines:
 - After a change, state plainly what you created or updated.
 - Keep replies concise. Use Markdown for lists and emphasis when helpful.`
 
-// Appended to the system prompt only on voice turns (see src/app/api/eve/route.ts).
+// Appended to the system prompt only on voice turns.
 // Eve leads with a short spoken summary; the browser reads ONLY the <speak> block
 // aloud and shows the rest as text.
 export const VOICE_REPLY_INSTRUCTION = `This message came from voice.

@@ -20,11 +20,7 @@
     "test:int": "cross-env NODE_OPTIONS=--no-deprecation vitest run --config ./vitest.config.mts"
   },
   "dependencies": {
-    "@ai-sdk/anthropic": "^3.0.85",
     "@ai-sdk/groq": "4.0.0-beta.54",
-    "@ai-sdk/mcp": "^1.0.52",
-    "@ai-sdk/openai": "^3.0.73",
-    "@ai-sdk/react": "^3.0.210",
     "@mozilla/readability": "^0.6.0",
     "@payloadcms/db-mongodb": "canary",
     "@payloadcms/next": "canary",
@@ -56,7 +52,6 @@
     "motion": "^12.40.0",
     "nanoid": "^5.1.14",
     "next": "16.2.7",
-    "ollama-ai-provider-v2": "^3.6.0",
     "payload": "canary",
     "radix-ui": "^1.6.0",
     "react": "19.2.6",

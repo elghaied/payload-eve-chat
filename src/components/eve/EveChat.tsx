@@ -20,6 +20,10 @@ import {
 import { Tool, ToolContent, ToolHeader, ToolInput, ToolOutput } from '@/components/ai-elements/tool'
 import { Reasoning } from '@/components/ai-elements/reasoning'
 import { ConversationSidebar, type ConversationSummary } from './ConversationSidebar'
+import { PostPreviewPanel } from './PostPreviewPanel'
+import { findOpenableDraft } from './proposeDraft'
+import type { PostDraft } from '@/eve/approval-message'
+import { buildApprovalMessage } from '@/eve/approval-message'
 import './eve.css'
 
 export { type ConversationSummary }
@@ -119,7 +123,49 @@ async function replaySessionEvents(sessionId: string, targetCount: number): Prom
 
 // ── Tool part renderer ────────────────────────────────────────────────────────
 
-function renderToolPart(part: EveDynamicToolPart, key: string): React.ReactNode {
+/**
+ * Render a `propose_post` tool part as a compact "review draft" button.
+ * The `onReopen` callback is called when the user clicks to reopen the panel.
+ */
+function renderProposePostPart(
+  part: EveDynamicToolPart & { state: 'output-available' },
+  key: string,
+  onReopen: (id: string, draft: PostDraft) => void,
+): React.ReactNode {
+  const raw = part.output as Record<string, unknown> | null | undefined
+  const title = typeof raw?.['title'] === 'string' ? raw['title'] : 'Untitled'
+  return (
+    <button
+      key={key}
+      type="button"
+      onClick={() => {
+        const draft = raw as PostDraft | null
+        if (draft && typeof draft.title === 'string' && typeof draft.markdown === 'string') {
+          onReopen(part.toolCallId, draft)
+        }
+      }}
+      className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-border bg-card px-3 py-1.5 text-left text-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+    >
+      <span>📝</span>
+      <span>Drafted a post — <strong>{title}</strong> — review it →</span>
+    </button>
+  )
+}
+
+function renderToolPart(
+  part: EveDynamicToolPart,
+  key: string,
+  onReopenPropose?: (id: string, draft: PostDraft) => void,
+): React.ReactNode {
+  // Compact "review draft" card for completed propose_post calls.
+  if (part.toolName === 'propose_post' && part.state === 'output-available' && onReopenPropose) {
+    return renderProposePostPart(
+      part as EveDynamicToolPart & { state: 'output-available' },
+      key,
+      onReopenPropose,
+    )
+  }
+
   const output =
     part.state === 'output-available' ? (
       <ToolOutput output={part.output} errorText={undefined} />
@@ -192,6 +238,12 @@ const EveChatInner: React.FC<EveChatProps & { initialEvents: unknown[] }> = ({
   const [input, setInput] = useState('')
   const [sidebarConversations, setSidebarConversations] = useState(conversations)
 
+  // Post-preview panel state: the draft currently shown (or null when closed).
+  const [activeDraft, setActiveDraft] = useState<{ id: string; draft: PostDraft } | null>(null)
+  // Tracks tool-call IDs that have already been handled (opened or dismissed) so we
+  // don't re-open the panel on every message update after it has been closed.
+  const handledProposeIdRef = useRef<Set<string>>(new Set())
+
   // Track the title for the current thread (first user message).
   const titleRef = useRef<string | undefined>(undefined)
   // In-flight guard so a rapid double-submit can't start two sends (which could
@@ -224,6 +276,16 @@ const EveChatInner: React.FC<EveChatProps & { initialEvents: unknown[] }> = ({
     // cursor advances, including after a turn completes) — no duplicate onFinish write.
     onSessionChange,
   })
+
+  // Detect new propose_post tool results and open the preview panel.
+  useEffect(() => {
+    const found = findOpenableDraft(agent.data.messages)
+    if (!found) return
+    if (handledProposeIdRef.current.has(found.id)) return
+    // Mark as handled before setting state to avoid double-open under StrictMode.
+    handledProposeIdRef.current.add(found.id)
+    setActiveDraft(found)
+  }, [agent.data.messages])
 
   const handleSubmit = async (message: PromptInputMessage) => {
     const text = message.text?.trim()
@@ -259,6 +321,12 @@ const EveChatInner: React.FC<EveChatProps & { initialEvents: unknown[] }> = ({
       }
     }
   }
+
+  // Callback for the "review it →" button on completed propose_post cards.
+  const handleReopenPropose = useCallback((id: string, draft: PostDraft) => {
+    handledProposeIdRef.current.delete(id)
+    setActiveDraft({ id, draft })
+  }, [])
 
   return (
     <div className="eve-scope flex h-[calc(100dvh-var(--app-header-height,48px))] min-h-[600px]">
@@ -302,7 +370,7 @@ const EveChatInner: React.FC<EveChatProps & { initialEvents: unknown[] }> = ({
                         }
 
                         if (part.type === 'dynamic-tool') {
-                          return renderToolPart(part, partKey)
+                          return renderToolPart(part, partKey, handleReopenPropose)
                         }
 
                         // step-start: no visible output
@@ -334,6 +402,21 @@ const EveChatInner: React.FC<EveChatProps & { initialEvents: unknown[] }> = ({
           </PromptInputFooter>
         </PromptInput>
       </div>
+      {activeDraft && (
+        <PostPreviewPanel
+          key={activeDraft.id}
+          draft={activeDraft.draft}
+          onApprove={(final) => {
+            handledProposeIdRef.current.add(activeDraft.id)
+            setActiveDraft(null)
+            void agent.send({ message: buildApprovalMessage(final) })
+          }}
+          onClose={() => {
+            handledProposeIdRef.current.add(activeDraft.id)
+            setActiveDraft(null)
+          }}
+        />
+      )}
     </div>
   )
 }

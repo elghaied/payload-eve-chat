@@ -69,6 +69,7 @@ export const EveView: React.FC<AdminViewServerProps> = async ({
           }))}
           activeId={activeId}
           initialSession={initialSession}
+          voiceAvailable={!!process.env.DEEPGRAM_API_KEY}
         />
       ) : (
         <Gutter>

@@ -3,6 +3,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from '@payloadcms/ui'
 import { useEveAgent } from 'eve/react'
 import type { EveDynamicToolPart } from 'eve/react'
+import { MicIcon } from 'lucide-react'
 import {
   Conversation,
   ConversationContent,
@@ -12,10 +13,12 @@ import {
 import { Message, MessageContent, MessageResponse } from '@/components/ai-elements/message'
 import {
   PromptInput,
+  PromptInputButton,
   PromptInputFooter,
   type PromptInputMessage,
   PromptInputSubmit,
   PromptInputTextarea,
+  PromptInputTools,
 } from '@/components/ai-elements/prompt-input'
 import { Tool, ToolContent, ToolHeader, ToolInput, ToolOutput } from '@/components/ai-elements/tool'
 import { Reasoning } from '@/components/ai-elements/reasoning'
@@ -24,7 +27,23 @@ import { PostPreviewPanel } from './PostPreviewPanel'
 import { findOpenableDraft } from './proposeDraft'
 import type { PostDraft } from '@/eve/approval-message'
 import { buildApprovalMessage } from '@/eve/approval-message'
+import { EqualizerBars } from './EqualizerBars'
+import { useVoice } from './useVoice'
+import { stripSpeak } from './speakable'
 import './eve.css'
+
+// ── Voice constants ───────────────────────────────────────────────────────────
+
+/**
+ * Ephemeral clientContext injected on every voice turn.
+ * Eve should reply naturally for a spoken conversation and wrap the portion to
+ * be spoken aloud in <speak>…</speak>, keeping it concise. The rest of the reply
+ * (detail, links, code) still streams to the chat window.
+ */
+const VOICE_REPLY_INSTRUCTION =
+  'This is a spoken conversation. Reply naturally and concisely. ' +
+  'Wrap the portion to be spoken aloud in <speak>…</speak> at the start of your reply. ' +
+  'Keep the spoken part brief (1–3 sentences). You may elaborate in text after the </speak> tag.'
 
 export { type ConversationSummary }
 
@@ -41,6 +60,8 @@ export interface EveChatProps {
   activeId?: string
   initialSession?: SessionCursor
   initialEvents?: unknown[]
+  /** True when DEEPGRAM_API_KEY is set server-side (read by EveView RSC). */
+  voiceAvailable?: boolean
 }
 
 // ── Session persistence helper ────────────────────────────────────────────────
@@ -187,7 +208,7 @@ function renderToolPart(
 // ── Loader: replay history (when reopening a thread) before mounting the hook ───
 
 export const EveChat: React.FC<EveChatProps> = (props) => {
-  const { activeId, initialSession, initialEvents } = props
+  const { activeId, initialSession, initialEvents, voiceAvailable = false } = props
 
   // A reopened thread needs its history replayed unless events were already provided.
   const needsReplay =
@@ -223,16 +244,17 @@ export const EveChat: React.FC<EveChatProps> = (props) => {
     )
   }
 
-  return <EveChatInner {...props} initialEvents={events} />
+  return <EveChatInner {...props} voiceAvailable={voiceAvailable} initialEvents={events} />
 }
 
 // ── Inner: the live chat (one useEveAgent instance) ────────────────────────────
 
-const EveChatInner: React.FC<EveChatProps & { initialEvents: unknown[] }> = ({
+const EveChatInner: React.FC<EveChatProps & { initialEvents: unknown[]; voiceAvailable: boolean }> = ({
   conversations,
   activeId,
   initialSession,
   initialEvents,
+  voiceAvailable,
 }) => {
   const router = useRouter()
   const [input, setInput] = useState('')
@@ -275,6 +297,30 @@ const EveChatInner: React.FC<EveChatProps & { initialEvents: unknown[] }> = ({
     // Persistence is driven solely by onSessionChange (fires whenever the session
     // cursor advances, including after a turn completes) — no duplicate onFinish write.
     onSessionChange,
+  })
+
+  // ── Voice ─────────────────────────────────────────────────────────────────
+
+  // Derive the latest assistant text and id from the message list.
+  const lastAssistantMsg = [...agent.data.messages].reverse().find((m) => m.role === 'assistant')
+  const lastAssistantTextPart = lastAssistantMsg?.parts.find((p) => p.type === 'text') as
+    | { type: 'text'; text: string }
+    | undefined
+  const latestAssistantText = lastAssistantTextPart?.text ?? ''
+  const latestAssistantId = lastAssistantMsg?.id
+
+  const voice = useVoice({
+    voiceAvailable,
+    status: agent.status,
+    assistantText: latestAssistantText,
+    assistantMessageId: latestAssistantId,
+    onTranscript: (text) => {
+      void agent.send({ message: text, clientContext: VOICE_REPLY_INSTRUCTION })
+    },
+    onBargeIn: () => {
+      // Stop the current agent streaming turn when the user starts speaking.
+      agent.stop()
+    },
   })
 
   // Detect new propose_post tool results and open the preview panel.
@@ -354,8 +400,12 @@ const EveChatInner: React.FC<EveChatProps & { initialEvents: unknown[] }> = ({
                         const partKey = `${messageKey}-${i}`
 
                         if (part.type === 'text') {
+                          // Strip <speak>…</speak> blocks so the tags/inner text
+                          // don't show raw in the chat (TTS speaks them instead).
+                          const displayText =
+                            m.role === 'assistant' ? stripSpeak(part.text) : part.text
                           return (
-                            <MessageResponse key={partKey}>{part.text}</MessageResponse>
+                            <MessageResponse key={partKey}>{displayText}</MessageResponse>
                           )
                         }
 
@@ -392,6 +442,29 @@ const EveChatInner: React.FC<EveChatProps & { initialEvents: unknown[] }> = ({
             onChange={(e) => setInput(e.currentTarget.value)}
           />
           <PromptInputFooter>
+            {voiceAvailable && (
+              <PromptInputTools>
+                <PromptInputButton
+                  onClick={() => voice.toggle()}
+                  tooltip={voice.active ? 'Stop voice' : 'Start voice'}
+                  aria-label={voice.active ? 'Stop voice' : 'Start voice'}
+                  aria-pressed={voice.active}
+                  className={voice.active ? 'text-primary' : ''}
+                >
+                  {voice.active ? (
+                    <EqualizerBars
+                      className={
+                        voice.state === 'thinking' || voice.state === 'speaking'
+                          ? 'opacity-50'
+                          : ''
+                      }
+                    />
+                  ) : (
+                    <MicIcon className="size-4" />
+                  )}
+                </PromptInputButton>
+              </PromptInputTools>
+            )}
             <PromptInputSubmit
               status={agent.status}
               onStop={agent.stop}

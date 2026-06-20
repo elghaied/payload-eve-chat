@@ -2,15 +2,14 @@ import React from 'react'
 import { DefaultTemplate } from '@payloadcms/ui/rsc'
 import { Gutter } from '@payloadcms/ui'
 import type { AdminViewServerProps } from 'payload'
-import type { UIMessage } from 'ai'
 import type { User } from '@/payload-types'
-import { listConversations, loadConversation } from '../../eve/conversations'
+import { listConversations, loadConversationBySession } from '../../eve/conversations'
 import { EveChat } from './EveChat'
 
 /**
  * Admin view for the Eve chat agent. Renders inside the Payload admin shell.
- * Loads the signed-in user's conversations and (optionally) the active thread's
- * messages, then hands them to the client chat component.
+ * Loads the signed-in user's conversation index and (optionally) the active
+ * thread's session cursor, then hands them to the client chat component.
  *
  * Auth narrowing: req.user is the project-wide union User | PayloadMcpApiKey | null
  * (widened by the MCP plugin). Only a real users-collection User can own
@@ -34,12 +33,16 @@ export const EveView: React.FC<AdminViewServerProps> = async ({
     typeof searchParams?.conversation === 'string' ? searchParams.conversation : undefined
 
   const conversations = user ? await listConversations(req.payload, user) : []
-  const active = user && activeId ? await loadConversation(req.payload, activeId, user) : null
-  const initialMessages = (active?.messages as UIMessage[] | undefined) ?? []
 
-  // Server-only: derive voice availability from env presence without leaking URLs/keys.
-  const sttAvailable = Boolean(process.env.STT_BASE_URL)
-  const ttsAvailable = Boolean(process.env.TTS_BASE_URL)
+  const activeRow =
+    user && activeId ? await loadConversationBySession(req.payload, activeId, user) : null
+  const initialSession = activeRow
+    ? {
+        sessionId: activeRow.eveSessionId ?? undefined,
+        continuationToken: activeRow.continuationToken ?? undefined,
+        streamIndex: activeRow.streamIndex ?? 0,
+      }
+    : undefined
 
   return (
     <DefaultTemplate
@@ -55,16 +58,17 @@ export const EveView: React.FC<AdminViewServerProps> = async ({
     >
       {user ? (
         // Key by the active conversation so switching threads (or starting a new
-        // chat) remounts EveChat — re-seeding useChat with the selected thread's
-        // messages. Without this, the client keeps its mount-time state and the
-        // wrong (or empty) thread is shown.
+        // chat) remounts EveChat — re-seeding it with the selected thread's
+        // session cursor. Without this, the client keeps its mount-time state
+        // and the wrong (or empty) thread is shown.
         <EveChat
           key={activeId ?? 'new'}
-          initialMessages={initialMessages}
-          conversations={conversations.map((c) => ({ id: String(c.id), title: c.title ?? 'Untitled' }))}
+          conversations={conversations.map((c) => ({
+            id: c.eveSessionId ?? String(c.id),
+            title: c.title ?? 'Untitled',
+          }))}
           activeId={activeId}
-          sttAvailable={sttAvailable}
-          ttsAvailable={ttsAvailable}
+          initialSession={initialSession}
         />
       ) : (
         <Gutter>

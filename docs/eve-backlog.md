@@ -48,7 +48,7 @@ Each is its own project (spec + plan). Listed roughly by value/effort.
 
 From the per-task and final whole-branch reviews + integration findings.
 
-- [ ] **B1 — Unique `eveSessionId` + transactional upsert.** Make `Conversations.eveSessionId`
+- [x] **B1 — Unique `eveSessionId` + race-resilient upsert.** ✅ Done (commit 3931c3d). Make `Conversations.eveSessionId`
   `unique` (and/or wrap the find→create→update in `src/app/api/eve/session-index/route.ts`
   in a transaction) to remove the duplicate-row race under concurrent/double-submit persists.
   Regenerate types. *(Final review — recommended.)*
@@ -56,20 +56,20 @@ From the per-task and final whole-branch reviews + integration findings.
   the session (can continue) but shows an **empty transcript**. Populate `initialEvents` via
   `GET /eve/v1/session/:id/stream?startIndex=0` (server-side in `EveView`, or client-side on
   mount in `EveChat`) so past messages render. *(Known limitation from Task 6/7.)*
-- [ ] **B3 — e2e Eve-runtime health guard.** The Eve runtime is a *second* process
+- [x] **B3 — e2e Eve-runtime health guard.** ✅ Done (commit 7e241eb). The Eve runtime is a *second* process
   (`eve dev`) not managed by Playwright's `webServer`; if it's down the app 500s and the e2e
   fails confusingly. Add a `GET /eve/v1/health` precondition (globalSetup or in-test) so the
   failure is legible. *(Task 10.)*
-- [ ] **B4 — De-dupe session persistence.** `EveChat` persists on **both** `onSessionChange`
+- [x] **B4 — De-dupe session persistence.** ✅ Done (commit dda9696). `EveChat` persists on **both** `onSessionChange`
   and `onFinish` (idempotent but redundant). Pick one. Also: `persistSession` swallows
   non-2xx HTTP responses silently — `console.warn` on `!res.ok`. *(Task 6.)*
-- [ ] **B5 — Double-submit guard in `EveChat`.** No in-flight lock on `handleSubmit`; a rapid
+- [x] **B5 — Double-submit guard in `EveChat`.** ✅ Done (commit dda9696). No in-flight lock on `handleSubmit`; a rapid
   double-submit can create a duplicate sidebar entry (interacts with B1). Add an
   `isSubmitting` ref / disable during send. *(Task 6.)*
-- [ ] **B6 — README + assets.** Quick Start says `pnpm dev`; this repo needs `pnpm devsafe`
+- [x] **B6 — README + assets.** ✅ devsafe + honest screenshot caption done (commit 89ed885); fresh screenshot capture still optional. Quick Start says `pnpm dev`; this repo needs `pnpm devsafe`
   (stale `.next` cache quirk). Replace the hero screenshot `images/eve-chat-post-preview.png`
   (it shows the deferred post-preview panel). *(Task 9.)*
-- [ ] **B7 — Test assertion gap.** `updateConversationCursor` test doesn't assert
+- [x] **B7 — Test assertion gap.** ✅ Done (commit 89ed885). `updateConversationCursor` test doesn't assert
   `overrideAccess: false` on the find-phase lookup (impl is correct; test is thin). *(Task 5.)*
 - [ ] **B8 — Revisit `docker-compose.yml` profiles.** It still has `ollama` / `voice` (stt/tts)
   profiles unused by the Eve build; reconcile when A3 (voice) is re-homed. *(Task 9.)*

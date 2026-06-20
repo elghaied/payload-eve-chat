@@ -42,14 +42,18 @@ async function persistSession(opts: {
   title?: string
 }) {
   try {
-    await fetch('/api/eve/session-index', {
+    const res = await fetch('/api/eve/session-index', {
       method: 'POST',
       credentials: 'same-origin',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(opts),
     })
-  } catch {
-    // Best-effort — don't break the chat on network failure.
+    if (!res.ok) {
+      console.warn(`[eve] session-index persist failed: ${res.status}`)
+    }
+  } catch (err) {
+    // Best-effort — don't break the chat on network failure, but surface it.
+    console.warn('[eve] session-index persist error', err)
   }
 }
 
@@ -88,6 +92,9 @@ export const EveChat: React.FC<EveChatProps> = ({
 
   // Track the title for the current thread (first user message).
   const titleRef = useRef<string | undefined>(undefined)
+  // In-flight guard so a rapid double-submit can't start two sends (which could
+  // race two new-session creates / duplicate sidebar entries).
+  const sendingRef = useRef(false)
 
   const onSessionChange = useCallback(
     (session: { sessionId?: string; continuationToken?: string; streamIndex: number }) => {
@@ -107,22 +114,16 @@ export const EveChat: React.FC<EveChatProps> = ({
     initialSession: initialSession as { sessionId?: string; continuationToken?: string; streamIndex: number } | undefined,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     initialEvents: initialEvents as any,
+    // Persistence is driven solely by onSessionChange (fires whenever the session
+    // cursor advances, including after a turn completes) — no duplicate onFinish write.
     onSessionChange,
-    onFinish: (snapshot) => {
-      const sid = snapshot.session.sessionId
-      if (!sid) return
-      void persistSession({
-        sessionId: sid,
-        continuationToken: snapshot.session.continuationToken,
-        streamIndex: snapshot.session.streamIndex,
-        title: titleRef.current,
-      })
-    },
   })
 
   const handleSubmit = async (message: PromptInputMessage) => {
     const text = message.text?.trim()
     if (!text) return
+    if (sendingRef.current) return // ignore re-entrant submits while a send is in flight
+    sendingRef.current = true
     setInput('')
 
     const isNew = !activeId && !agent.session.sessionId
@@ -131,7 +132,11 @@ export const EveChat: React.FC<EveChatProps> = ({
       titleRef.current = text.slice(0, 80)
     }
 
-    await agent.send({ message: text })
+    try {
+      await agent.send({ message: text })
+    } finally {
+      sendingRef.current = false
+    }
 
     // After send resolves for a brand-new chat, push the new sessionId into
     // the URL so follow-ups persist to the same thread.

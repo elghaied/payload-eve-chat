@@ -15,32 +15,28 @@ be batched. The old Vercel-AI-SDK implementations of the deferred features still
 
 ---
 
-## A. Deferred features to re-home onto Eve
+## A. Deferred features — ALL SHIPPED (Vercel-native, 2026-06-20)
 
-Each is its own project (spec + plan). Listed roughly by value/effort.
+Re-homed onto Eve as a **full Vercel-native** conversion (no SearXNG/Docker/self-hosted services).
+Plan: `docs/superpowers/plans/2026-06-20-vercel-native-completion.md`. Notes:
+`docs/superpowers/notes/{eve-tools-findings,deepgram-findings,port-references}.md`.
 
-- [ ] **A1 — Post preview (approve-before-create).** Re-home the `proposePost` flow: Eve
-  proposes a post (title/status/Markdown), the admin edits + approves in a side panel, and
-  only then is it created. Reference impl: `src/eve/propose-tool.ts`,
-  `src/components/eve/PostPreviewPanel.tsx`, `src/eve/approval-message.ts` (on `ai-sdk`).
-  On Eve: an `agent/tools/propose_post.ts` (or a human-in-the-loop input request) + wire the
-  panel to `useEveAgent` tool parts. Update `agent/instructions.md` (currently creates posts
-  directly). **Medium.**
-- [ ] **A2 — Web search + read-URL.** Re-home `webSearch` / `readUrl` as Eve tools
-  (`agent/tools/*.ts`). Reference: `src/eve/web-search.ts`, `read-url.ts`, `web-tools.ts`,
-  `url-safety.ts` (SSRF guard) on `ai-sdk`. Needs a reachable SearXNG (self-hosted) or a
-  hosted search API; `jsdom`/`@mozilla/readability` are already `serverExternalPackages`.
-  Restore the search-related instructions in `agent/instructions.md`. **Medium.**
-- [ ] **A3 — Voice (hands-free STT + TTS).** Re-home the mic loop: Silero VAD → transcribe →
-  feed `useEveAgent` → sentence-stream the reply to TTS with barge-in. Reference:
-  `src/components/eve/useVoice.ts`, `sentenceStreamer.ts`, `speakable.ts`, `wav.ts`,
-  `EqualizerBars.tsx`, and the kept routes `src/app/api/eve/{transcribe,speak}/route.ts` +
-  `src/eve/audio.ts`. Main work: bridge VAD/TTS to Eve's stream events instead of the AI SDK
-  `useChat` stream. **Large.**
-- [ ] **A4 — Sandbox code-execution tool.** The original motivation. Add an
-  `agent/sandbox/sandbox.ts` backend (`docker()`/`microsandbox()`/`just-bash` locally;
-  Vercel Sandbox in prod) and a tool that runs code in it. New feature (no `ai-sdk`
-  reference). Note: a Vercel-Sandbox prod path needs the cloud deploy (B/C below). **Medium–Large.**
+- [x] **A1 — Post preview (approve-before-create).** ✅ `agent/tools/propose_post.ts` (no-write
+  echo) + editable `PostPreviewPanel` opened from the tool part; on approve the client sends
+  `buildApprovalMessage(final)` so Eve creates the post with the **edited** content via
+  createDocumentFromMarkdown. `src/eve/propose-tool.ts` (AI-SDK orphan) removed.
+- [x] **A2 — Web search + read-URL.** ✅ Uses Eve's **built-in** `web_search` (AI Gateway
+  perplexity) + `web_fetch` (native fetch → Markdown). No SearXNG, no extra keys. The AI-SDK web
+  stack (`web-tools/web-search/read-url/url-safety` + tests) and `jsdom`/`@mozilla/readability`
+  were deleted. `agent/instructions.md` advertises the web tools.
+- [x] **A3 — Voice (hands-free STT + TTS).** ✅ **Deepgram** Nova-3 streaming STT + Aura-2 TTS,
+  browser-side via native WebSocket with a 30s token from the Payload-auth-gated
+  `POST /api/deepgram/token` route; end-of-utterance + barge-in; kept
+  `sentenceStreamer`/`speakable`/`EqualizerBars`. Replaced Silero VAD + speaches + kokoro; deleted
+  the old transcribe/speak routes, `audio.ts`, `wav.ts`, `@ricky0123/vad-web`, copy-vad-assets.
+- [x] **A4 — Sandbox code-execution.** ✅ Decided **off** (security-first, Vercel-native):
+  `bash`/`read_file`/`write_file`/`glob`/`grep` disabled via `disableTool()`. A future Vercel
+  Sandbox path would re-enable them with a `vercel()` backend in `agent/sandbox/sandbox.ts`.
 
 ---
 
@@ -82,6 +78,9 @@ From the per-task and final whole-branch reviews + integration findings.
   dropped the stale `OLLAMA_BASE_URL` from the app profile; labelled `stt`/`tts` (voice, A3)
   and `searxng` (web, A2) as backing deferred features. `docker compose config` valid;
   services now: mongo, stt, tts, searxng.
+  **SUPERSEDED (2026-06-20, Vercel-native):** `docker-compose.yml` and the `searxng/`/`models/`
+  dirs were DELETED. Web uses Eve built-ins (A2), voice uses Deepgram cloud (A3); MongoDB is a
+  local `mongod` or Atlas. No Docker stack remains.
 - [x] **B9 — Triage orphaned modules.** ✅ Done (import-graph analysis). Deleted the genuinely
   dead `src/eve/system-prompt.ts` (no importers; superseded by `agent/instructions.md`).
   Confirmed `markdown-tool.ts` is LIVE (imported by `payload.config.ts` — the

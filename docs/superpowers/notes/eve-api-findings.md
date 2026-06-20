@@ -435,24 +435,30 @@ would return 401 in production until replaced by a real auth provider (Task 4).
 
 ---
 
-## 12. Model: Groq direct provider (AMENDED — supersedes AI Gateway)
+## 12. Model: Vercel AI Gateway (CURRENT — supersedes the earlier Groq-direct note)
 
-The project uses a **direct Groq provider**, NOT an AI Gateway model string
-(AI Gateway requires a Vercel credit card the user does not have). `agent/agent.ts`:
+The project routes the model through the **Vercel AI Gateway** (a credit card was added to the
+linked Vercel team, which unlocks free credits). `agent/agent.ts`:
 
 ```ts
-import { createGroq } from '@ai-sdk/groq'
-const groq = createGroq({ apiKey: process.env.GROQ_API_KEY })
-export default defineAgent({ model: groq(process.env.EVE_MODEL || 'llama-3.3-70b-versatile') })
+import { defineAgent } from "eve";
+export default defineAgent({
+  model: process.env.EVE_MODEL || "openai/gpt-oss-120b",
+  modelOptions: {
+    providerOptions: { gateway: { only: [process.env.EVE_PROVIDER || "groq"] } },
+  },
+});
 ```
 
-- Package: `@ai-sdk/groq@4.0.0-beta.54` — its `@ai-sdk/provider` is `4.0.0-beta.19`, the
-  EXACT version `ai@7.0.0-beta.178` uses, so the model instance is interface-compatible.
-- `GROQ_API_KEY` lives in `.env.local` (gitignored). `EVE_MODEL` overrides the Groq **model
-  name** only (default `llama-3.3-70b-versatile`, a tool-calling-capable model) — it can no
-  longer carry a fully-qualified gateway string like `anthropic/...`.
-- Verified end-to-end: a session streamed a real reply (`PONG`, finishReason `stop`,
-  modelId `meta/llama-3.3-70b`).
+- `EVE_MODEL` is an AI Gateway slug (`provider/model`). `gpt-oss-120b`'s creator is "openai" but
+  OpenAI doesn't *serve* it on the gateway — it's served by groq/cerebras/etc — so the serving
+  provider MUST be pinned via `modelOptions.providerOptions.gateway.only` (`EVE_PROVIDER=groq`),
+  else the gateway errors "no available providers match only:openai".
+- Auth: `VERCEL_OIDC_TOKEN` from `vercel env pull .env.local` (expires ~12h) or `AI_GATEWAY_API_KEY`.
+- `llama-3.3-70b-versatile` emits MALFORMED tool calls (jams JSON args into the tool name) → avoid;
+  `moonshotai/kimi-k2-instruct` isn't on this Groq account. Use `openai/gpt-oss-120b`.
+- (Historical: an interim build used `@ai-sdk/groq` direct provider before the card was added;
+  that dependency is now removed and the gateway config above is authoritative.)
 
 ---
 

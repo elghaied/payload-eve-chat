@@ -24,8 +24,9 @@ export async function login({
   await page.fill('#field-password', user.password)
   await page.click('button[type="submit"]')
 
+  // waitForURL already confirms successful login and redirect to /admin.
+  // Payload v4 canary no longer renders `span[title="Dashboard"]`; the page
+  // title is surfaced as a live-region alert that hydrates asynchronously, so
+  // we assert on the URL only to stay robust across v4 canary changes.
   await page.waitForURL(`${serverURL}/admin`)
-
-  const dashboardArtifact = page.locator('span[title="Dashboard"]')
-  await expect(dashboardArtifact).toBeVisible()
 }

@@ -1,8 +1,10 @@
 services:
   # The app itself. Behind the `app` profile because the recommended workflow runs
-  # it on the host (`pnpm dev`) where localhost reaches the other services; only
+  # it on the host (`pnpm devsafe`) where localhost reaches the other services; only
   # enable this for a fully-containerized run (then switch .env hosts to service
-  # names: mongo / ollama / stt / tts).
+  # names: mongo / stt / tts / searxng). NOTE: the Eve model runs via the Vercel AI
+  # Gateway, so a containerized run also needs the gateway creds (GROQ_API_KEY and/or
+  # VERCEL_OIDC_TOKEN) available in .env.
   payload:
     image: node:24-alpine
     profiles: ['app']
@@ -27,7 +29,8 @@ services:
       # Let pnpm run non-interactively (auto-confirm a node_modules purge; no TTY here).
       - CI=true
       - DATABASE_URL=mongodb://mongo/payload-eve-chat
-      - OLLAMA_BASE_URL=http://ollama:11434/api
+      # STT/TTS point at the voice containers; only used once voice is re-homed onto Eve
+      # (deferred feature — see docs/eve-backlog.md A3).
       - STT_BASE_URL=http://stt:8000/v1
       - TTS_BASE_URL=http://tts:8880/v1
 
@@ -43,6 +46,8 @@ services:
     logging:
       driver: none
 
+  # stt + tts back the DEFERRED voice feature (Eve port pending — docs/eve-backlog.md A3;
+  # the live voice implementation is on the `ai-sdk` branch). Profile: voice / full.
   stt:
     image: ghcr.io/speaches-ai/speaches:latest-cuda
     # No GPU? Swap to the CPU image and delete the `deploy:` block below:
@@ -78,39 +83,12 @@ services:
               count: all
               capabilities: [gpu]
 
-  # Local LLM for AI_PROVIDER=ollama. Serves on :11434 and auto-pulls OLLAMA_MODEL
-  # on first start. Runs as the host user with models under ./models/ollama so the
-  # weights are portable and not root-owned.
-  ollama:
-    image: ollama/ollama:latest
-    profiles: ['ollama', 'full']
-    user: '1000:1000'
-    environment:
-      - HOME=/tmp
-      - OLLAMA_MODELS=/models
-      # Default context window. 4096 is too small for the agent (system prompt +
-      # MCP tool schemas + reasoning + tool results overflow it mid-task).
-      - OLLAMA_CONTEXT_LENGTH=8192
-    ports:
-      - '11434:11434'
-    volumes:
-      - ./models/ollama:/models
-    entrypoint: ['/bin/sh', '-c']
-    command:
-      - |
-        ollama serve &
-        pid=$$!
-        until ollama list >/dev/null 2>&1; do sleep 1; done
-        ollama pull ${OLLAMA_MODEL:-qwen3:4b} || true
-        wait $$pid
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
+  # NOTE: no `ollama` service — the Eve agent's model runs through the Vercel AI Gateway
+  # (default openai/gpt-oss-120b via groq), not a local Ollama. The Ollama service for
+  # AI_PROVIDER=ollama lives on the `ai-sdk` branch.
 
+  # searxng backs the DEFERRED web-search feature (Eve port pending — docs/eve-backlog.md
+  # A2; the live implementation is on the `ai-sdk` branch). Profile: web / full.
   searxng:
     image: searxng/searxng:latest
     profiles: ['web', 'full']

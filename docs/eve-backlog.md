@@ -74,14 +74,24 @@ From the per-task and final whole-branch reviews + integration findings.
   (it shows the deferred post-preview panel). *(Task 9.)*
 - [x] **B7 — Test assertion gap.** ✅ Done (commit 89ed885). `updateConversationCursor` test doesn't assert
   `overrideAccess: false` on the find-phase lookup (impl is correct; test is thin). *(Task 5.)*
-- [ ] **B10 — `admin.e2e.spec.ts` "navigate to dashboard" flakiness.** Pre-existing, not
-  Eve-related — likely a Payload v4-canary admin-dashboard assertion. Surfaced while
-  stabilizing the e2e suite for B2. Investigate/relax that assertion.
-- [ ] **B8 — Revisit `docker-compose.yml` profiles.** It still has `ollama` / `voice` (stt/tts)
-  profiles unused by the Eve build; reconcile when A3 (voice) is re-homed. *(Task 9.)*
-- [ ] **B9 — Orphaned `src/eve/config.ts` + deferred modules.** `config.ts` and the deferred
-  feature files are unwired but still present (used only by each other / kept routes). Clean
-  up / fold into each feature as A1–A4 land. *(Final review — by design for now.)*
+- [x] **B10 — `admin.e2e.spec.ts` "navigate to dashboard" flakiness.** ✅ Done. It asserted
+  `span[title="Dashboard"]`, a selector Payload v4 canary dropped (same change the login
+  helper worked around); switched to the stable `Dashboard` nav link.
+- [x] **B8 — Reconcile `docker-compose.yml` profiles.** ✅ Done. Removed the `ollama` service
+  (Eve's model runs via the Vercel AI Gateway, not local Ollama — Ollama stays on `ai-sdk`);
+  dropped the stale `OLLAMA_BASE_URL` from the app profile; labelled `stt`/`tts` (voice, A3)
+  and `searxng` (web, A2) as backing deferred features. `docker compose config` valid;
+  services now: mongo, stt, tts, searxng.
+- [x] **B9 — Triage orphaned modules.** ✅ Done (import-graph analysis). Deleted the genuinely
+  dead `src/eve/system-prompt.ts` (no importers; superseded by `agent/instructions.md`).
+  Confirmed `markdown-tool.ts` is LIVE (imported by `payload.config.ts` — the
+  `createDocumentFromMarkdown` MCP tool). The rest are intentionally **retained, unwired,
+  with passing tests**, to be folded in as their feature is re-homed:
+  - post-preview (A1): `propose-tool.ts`, `approval-message.ts`, `PostPreviewPanel.tsx`
+  - web search (A2): `web-tools.ts`, `web-search.ts`, `read-url.ts`, `url-safety.ts`
+  - voice (A3): `audio.ts`, `config.ts` (getEveConfig), `useVoice.ts`, `sentenceStreamer.ts`,
+    `speakable.ts`, `wav.ts`, `EqualizerBars.tsx`, and the `api/eve/{transcribe,speak}` routes
+  When A1–A4 land, fold each cluster in (and retire `config.ts` once nothing uses it).
 
 ---
 

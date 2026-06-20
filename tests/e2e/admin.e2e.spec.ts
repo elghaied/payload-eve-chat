@@ -21,7 +21,9 @@ test.describe('Admin Panel', () => {
   test('can navigate to dashboard', async () => {
     await page.goto('http://localhost:3000/admin')
     await expect(page).toHaveURL('http://localhost:3000/admin')
-    const dashboardArtifact = page.locator('span[title="Dashboard"]').first()
+    // Payload v4 canary no longer renders span[title="Dashboard"] (same change the login
+    // helper worked around); assert the stable Dashboard nav link instead.
+    const dashboardArtifact = page.getByRole('link', { name: 'Dashboard' }).first()
     await expect(dashboardArtifact).toBeVisible()
   })
 

@@ -350,32 +350,33 @@ export function useVoice({
         if (isFinal && transcript) {
           accumulatedRef.current += transcript + ' '
         }
-        if (speechFinal) {
-          const text = accumulatedRef.current.trim()
-          accumulatedRef.current = ''
-          if (text) {
-            setState('thinking')
-            onTranscriptRef.current(text)
-          }
-        }
+        if (speechFinal) submitUtterance()
       } else if (msgType === 'UtteranceEnd') {
-        const text = accumulatedRef.current.trim()
-        accumulatedRef.current = ''
-        if (text) {
-          setState('thinking')
-          onTranscriptRef.current(text)
-        }
-      } else if (msgType === 'SpeechStarted') {
-        // Barge-in / turn-taking: the user started speaking again. Interrupt whenever a turn
-        // is in flight (thinking OR streaming) or TTS is active — NOT just while audio plays —
-        // so the next utterance starts a fresh turn instead of queuing behind the current one
-        // (which caused the "she answers the previous question" lag).
-        const agentBusy = statusRef.current === 'submitted' || statusRef.current === 'streaming'
-        if (isPlayingRef.current || ttsTextQueueRef.current.length > 0 || agentBusy) {
-          clearPlayback()
-          onBargeInRef.current?.()
-          setState('listening')
-        }
+        // Backstop: submit if speech_final never fired.
+        submitUtterance()
+      }
+      // NOTE: we intentionally do NOT act on `SpeechStarted` (pure VAD). It fires on Eve's own
+      // TTS echo and background noise, so using it to stop the turn killed real turns (Eve said
+      // "I'll search…" then her own voice triggered a barge-in that aborted before the search).
+      // Interruption is driven only by an actual transcript below.
+    }
+
+    // Submit a completed utterance. If a turn is already in flight, a REAL transcript means the
+    // user is interrupting → stop the current turn first, then send the new one (turn-taking
+    // without queuing). Driven by transcript (not VAD) so echo/noise can't kill a live turn.
+    function submitUtterance() {
+      const text = accumulatedRef.current.trim()
+      accumulatedRef.current = ''
+      if (!text) return
+      const agentBusy = statusRef.current === 'submitted' || statusRef.current === 'streaming'
+      clearPlayback()
+      if (agentBusy) onBargeInRef.current?.()
+      setState('thinking')
+      // Small delay when interrupting so the stop settles before the new turn starts.
+      if (agentBusy) {
+        window.setTimeout(() => onTranscriptRef.current(text), 80)
+      } else {
+        onTranscriptRef.current(text)
       }
     }
 

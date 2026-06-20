@@ -34,3 +34,5 @@ Web access:
 - Use `web_fetch` to read a specific URL the user gives you (or one you found via search) —
   it returns the page as Markdown. Use it to summarize articles or pull details from a page.
 - When you use the web, cite the source (title + URL) so the user can verify.
+- When you decide to use a tool (search, create, find, update), CALL IT right away in the same
+  turn — never just say "I'll search/create…" and stop without calling the tool.

@@ -16,7 +16,9 @@
 - **Admin-only:** every path that reaches the agent must reject non-admins and API-key principals (`user.collection === 'users'` is the only accepted principal), reproducing the old `/api/eve` guard exactly.
 - **Payload MCP server is unchanged.** Do not edit the MCP plugin config, the Posts/Tasks collections, or the MCP write surface.
 - **Eve is beta** (`eve@0.11.x` at time of writing). **Task 1 pins the exact installed version and the real API surface**; later tasks that reference Eve symbols must match Task 1's findings file — if a documented signature differs from the installed package's types, the installed package wins, and you update the step accordingly.
-- **Default model:** `anthropic/claude-sonnet-4-6` via AI Gateway, read from env `EVE_MODEL`.
+- **Model (amended):** **direct Groq provider** — `@ai-sdk/groq@4.0.0-beta.54` (matches Eve's `ai@7.0.0-beta.178`), `createGroq({ apiKey: process.env.GROQ_API_KEY })`, model `llama-3.3-70b-versatile` (override via `EVE_MODEL`). NOT AI Gateway (it needs a Vercel card). Already wired + verified in Task 1 (commit `4b7b9cf`).
+- **Hosting (amended):** local-first; Vercel deploy deferred. Task 9's docs reflect this.
+- **Persistence (amended):** `Conversations` stores only the session cursor (`eveSessionId`, `continuationToken`, `streamIndex`, `title`, `user`); **no `messages` cache field** — Eve replays history via `?startIndex=0` + `initialEvents`/`initialSession` (see `docs/superpowers/notes/eve-api-findings.md`).
 - **Package manager:** `pnpm`. **Dev server:** `pnpm devsafe` (clears the stale `.next` RSC cache; plain `pnpm dev` has a known canary cache quirk in this repo).
 - Commit after every task. Conventional-commit messages.
 

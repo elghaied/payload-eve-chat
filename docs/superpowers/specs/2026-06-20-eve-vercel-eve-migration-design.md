@@ -1,7 +1,17 @@
 # Migrating Eve from the Vercel AI SDK to the Vercel Eve framework — Design
 
 **Date:** 2026-06-20
-**Status:** Approved (design); implementation plan pending
+**Status:** Approved (design); in implementation
+
+> **Amendment (2026-06-20, during execution).** Two decisions in §3/§5 changed once the
+> Vercel AI Gateway turned out to require a credit card on file (which the user does not have):
+> 1. **Model:** use a **direct Groq provider** (`@ai-sdk/groq`, `llama-3.3-70b-versatile`,
+>    `GROQ_API_KEY`) instead of an AI Gateway model string. Eve's `defineAgent({ model })`
+>    accepts a direct AI SDK `LanguageModel`, so this is fully native. Verified end-to-end.
+> 2. **Hosting:** **local-first now; Vercel deployment deferred** until the user has billing
+>    (every Vercel-cloud feature — AI Gateway, Vercel Sandbox in prod — needs a card).
+> Also: Eve has no session-list endpoint but can replay sessions, so §4.3's `Conversations`
+> index **drops the `messages` cache field** and stores only the session cursor.
 **Branch context:** The current Vercel AI SDK implementation is preserved on the **`ai-sdk`**
 branch (pushed to origin). This migration lands on **`main`**.
 

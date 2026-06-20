@@ -56,6 +56,38 @@ describe('describeToolResult', () => {
     }
   })
 
+  it('parses the gateway web_search tool output { answer, sources }', () => {
+    const v = describeToolResult(
+      part({
+        state: 'output-available',
+        toolName: 'web_search',
+        toolMetadata: { eve: { kind: 'tool-call', name: 'web_search' } },
+        input: { query: 'payload cms v4' },
+        output: { answer: 'Payload v4 is out.', sources: ['https://payloadcms.com/docs', { url: 'https://x.com/a', title: 'X' }] },
+      }),
+    )
+    expect(v?.kind).toBe('web_search')
+    if (v?.kind === 'web_search') {
+      expect(v.answer).toBe('Payload v4 is out.')
+      expect(v.results.map((r) => r.url)).toEqual(['https://payloadcms.com/docs', 'https://x.com/a'])
+      expect(v.results[0]!.title).toBe('payloadcms.com')
+      expect(v.results[1]!.title).toBe('X')
+    }
+  })
+
+  it('renders a web_search error as text', () => {
+    const v = describeToolResult(
+      part({
+        state: 'output-available',
+        toolName: 'web_search',
+        toolMetadata: { eve: { kind: 'tool-call', name: 'web_search' } },
+        input: { query: 'x' },
+        output: { error: 'Web search timed out after 25s.' },
+      }),
+    )
+    expect(v).toMatchObject({ kind: 'text', text: 'Web search timed out after 25s.' })
+  })
+
   it('parses web_fetch output', () => {
     const v = describeToolResult(
       part({

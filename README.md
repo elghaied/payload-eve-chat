@@ -19,9 +19,10 @@ voice, Eve's built-in web search) so it deploys to Vercel with no Docker/self-ho
 - **Post preview (approve-before-create)** — when you ask Eve to write a post, it calls
   `propose_post` and shows an **editable** preview panel; the post is only created via
   `createDocumentFromMarkdown` after you review/edit and approve.
-- **Web search + read-URL** — Eve's **native** built-in `web_search` and `web_fetch` (fetch any URL
-  as Markdown), both through the AI Gateway. No SearXNG, no extra key. (Native `web_search` requires
-  a model whose provider supports it — the default Claude does; gpt-oss/Groq does not.)
+- **Web search + read-URL** — `web_search` (runs through the AI Gateway with a Perplexity Sonar
+  model; override with `WEB_SEARCH_MODEL`) and the built-in `web_fetch` (fetch any URL as Markdown).
+  No SearXNG, no extra key. (Provider-native `web_search` is intentionally overridden — it's
+  unreliable through the gateway: unsupported on Groq-served models and hangs on Anthropic.)
 - **Hands-free voice** — streaming speech-to-text and text-to-speech via **Deepgram** (Nova-3 STT
   + Aura-2 TTS) with end-of-utterance detection and barge-in. The mic button appears when
   `DEEPGRAM_API_KEY` is configured. The key always stays server-side: **STT** uses a short-lived
@@ -102,11 +103,12 @@ EVE_MODEL=anthropic/claude-haiku-4.5   # default: native web_search + strong too
                                         # openai/gpt-oss-120b whose creator isn't the provider)
 ```
 
-The default is chosen so **Eve's native built-in tools work out of the box** — `web_search` is a
-provider-native tool that only works on models whose provider implements it (Anthropic, OpenAI,
-Google do; **gpt-oss served by Groq does not**). Cheaper native swaps: `google/gemini-2.5-flash`,
-`openai/gpt-4o-mini`. Avoid models weak at tool calls (`llama-3.3-70b` emits malformed tool calls
-and breaks the MCP demo).
+The default is chosen for strong tool calling (the MCP Posts/Tasks demo depends on it). Cheaper
+swaps: `google/gemini-2.5-flash`, `openai/gpt-4o-mini`. Avoid models weak at tool calls
+(`llama-3.3-70b` emits malformed tool calls and breaks the MCP demo). Web search runs through a
+small gateway-backed tool (`agent/tools/web_search.ts`, Perplexity Sonar) rather than the model's
+provider-native search, which is unreliable through the gateway (unsupported on Groq, hangs on
+Anthropic).
 
 Auth the gateway with `vercel link && vercel env pull .env.local` (writes `VERCEL_OIDC_TOKEN`,
 which expires ~12h — re-pull when gateway calls start returning auth errors) or set a stable

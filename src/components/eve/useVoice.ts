@@ -112,6 +112,16 @@ export function useVoice({
     statusRef.current = status
   })
 
+  // Latest-callback refs: the STT handler is created once in start() and must always call the
+  // CURRENT onTranscript/onBargeIn (which close over the live agent + session) — otherwise a
+  // transcript can be sent to a stale agent and silently do nothing.
+  const onTranscriptRef = useRef(onTranscript)
+  const onBargeInRef = useRef(onBargeIn)
+  useEffect(() => {
+    onTranscriptRef.current = onTranscript
+    onBargeInRef.current = onBargeIn
+  })
+
   // ── STT refs ──────────────────────────────────────────────────────────────
   const sttWsRef = useRef<WebSocket | null>(null)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
@@ -345,7 +355,7 @@ export function useVoice({
           accumulatedRef.current = ''
           if (text) {
             setState('thinking')
-            onTranscript(text)
+            onTranscriptRef.current(text)
           }
         }
       } else if (msgType === 'UtteranceEnd') {
@@ -353,7 +363,7 @@ export function useVoice({
         accumulatedRef.current = ''
         if (text) {
           setState('thinking')
-          onTranscript(text)
+          onTranscriptRef.current(text)
         }
       } else if (msgType === 'SpeechStarted') {
         // Barge-in / turn-taking: the user started speaking again. Interrupt whenever a turn
@@ -363,7 +373,7 @@ export function useVoice({
         const agentBusy = statusRef.current === 'submitted' || statusRef.current === 'streaming'
         if (isPlayingRef.current || ttsTextQueueRef.current.length > 0 || agentBusy) {
           clearPlayback()
-          onBargeIn?.()
+          onBargeInRef.current?.()
           setState('listening')
         }
       }
@@ -417,7 +427,7 @@ export function useVoice({
     setState('listening')
     // `active` intentionally omitted — we read activeRef.current inside closures.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [voiceAvailable, clearPlayback, onTranscript, onBargeIn])
+  }, [voiceAvailable, clearPlayback])
 
   // ── stop() ─────────────────────────────────────────────────────────────────
 

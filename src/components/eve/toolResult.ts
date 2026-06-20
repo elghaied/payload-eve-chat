@@ -8,7 +8,7 @@ export type WebSearchItem = { url: string; title: string; pageAge: string | null
 export type AdminRecord = { id: string; label: string; href?: string }
 
 export type ToolResultView =
-  | { kind: 'web_search'; results: WebSearchItem[] }
+  | { kind: 'web_search'; answer?: string; results: WebSearchItem[] }
   | { kind: 'web_fetch'; url: string; truncated: boolean; preview: string }
   | { kind: 'records'; verb: 'Created' | 'Updated' | 'Found'; collection?: string; records: AdminRecord[]; total?: number }
   | { kind: 'text'; text: string }
@@ -60,6 +60,31 @@ function toRecord(doc: AnyRecord, slug: string | undefined): AdminRecord {
   return { id: String(doc['id'] ?? ''), label: labelOf(doc), href: adminHref(slug, doc['id']) }
 }
 
+/** Normalize one search source (URL string, or {url,title,date?}) into a link item. */
+function toSearchItem(src: unknown): WebSearchItem | null {
+  if (typeof src === 'string') return { url: src, title: hostOf(src), pageAge: null }
+  if (isObj(src) && typeof src['url'] === 'string') {
+    const url = src['url'] as string
+    const title = typeof src['title'] === 'string' && src['title'] ? (src['title'] as string) : hostOf(url)
+    const date = src['date'] ?? src['pageAge'] ?? src['published_date']
+    return { url, title, pageAge: typeof date === 'string' ? date : null }
+  }
+  return null
+}
+
+/** Anthropic-native web_search output is an array of { url, title, pageAge }. */
+function toWebSearchArray(output: unknown): WebSearchItem[] {
+  if (!Array.isArray(output)) return []
+  return output
+    .filter(isObj)
+    .filter((r) => typeof r['url'] === 'string')
+    .map((r) => ({
+      url: r['url'] as string,
+      title: (typeof r['title'] === 'string' && r['title']) || hostOf(r['url'] as string),
+      pageAge: typeof r['pageAge'] === 'string' ? (r['pageAge'] as string) : null,
+    }))
+}
+
 function mcpText(output: AnyRecord): string | undefined {
   const content = output['content']
   if (Array.isArray(content)) {
@@ -78,18 +103,24 @@ export function describeToolResult(part: EveDynamicToolPart): ToolResultView | n
   const output = part.output
   const name = part.toolMetadata?.eve?.name ?? part.toolName
 
-  // web_search — Anthropic native output is an array of web_search_result objects.
-  if (name === 'web_search' || (Array.isArray(output) && isObj(output[0]) && output[0]['type'] === 'web_search_result')) {
-    const arr = Array.isArray(output) ? output : []
-    const results: WebSearchItem[] = arr
-      .filter(isObj)
-      .filter((r) => typeof r['url'] === 'string')
-      .map((r) => ({
-        url: r['url'] as string,
-        title: (typeof r['title'] === 'string' && r['title']) || hostOf(r['url'] as string),
-        pageAge: typeof r['pageAge'] === 'string' ? (r['pageAge'] as string) : null,
-      }))
-    return { kind: 'web_search', results }
+  // web_search — our gateway tool returns { answer, sources } | { error }.
+  // (Also handle the Anthropic-native array shape as a fallback.)
+  if (name === 'web_search') {
+    if (isObj(output)) {
+      if (typeof output['error'] === 'string') return { kind: 'text', text: output['error'] as string }
+      if (typeof output['answer'] === 'string') {
+        const sources = Array.isArray(output['sources']) ? output['sources'] : []
+        return {
+          kind: 'web_search',
+          answer: output['answer'] as string,
+          results: sources.map(toSearchItem).filter((x): x is WebSearchItem => x !== null),
+        }
+      }
+    }
+    return { kind: 'web_search', results: toWebSearchArray(output) }
+  }
+  if (Array.isArray(output) && isObj(output[0]) && output[0]['type'] === 'web_search_result') {
+    return { kind: 'web_search', results: toWebSearchArray(output) }
   }
 
   // web_fetch — { content, contentType, url, truncated }

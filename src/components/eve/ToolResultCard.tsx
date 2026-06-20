@@ -30,10 +30,18 @@ function Shell({ icon, children }: { icon: ReactNode; children: ReactNode }) {
 
 function ResultBody({ view }: { view: ToolResultView }) {
   if (view.kind === 'web_search') {
-    if (view.results.length === 0) return <span className="text-muted-foreground">No web results.</span>
+    if (!view.answer && view.results.length === 0)
+      return <span className="text-muted-foreground">No web results.</span>
     return (
       <div>
-        <div className="mb-1.5 font-medium">Web results</div>
+        {view.answer && (
+          <p className="mb-2 whitespace-pre-wrap text-foreground">{view.answer}</p>
+        )}
+        {view.results.length > 0 && (
+          <div className="mb-1.5 font-medium text-muted-foreground text-xs uppercase tracking-wide">
+            Sources
+          </div>
+        )}
         <ul className="space-y-1.5">
           {view.results.map((r, i) => (
             <li key={i} className="min-w-0">

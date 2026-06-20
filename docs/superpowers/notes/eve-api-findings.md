@@ -435,12 +435,24 @@ would return 401 in production until replaced by a real auth provider (Task 4).
 
 ---
 
-## 12. Model id note
+## 12. Model: Groq direct provider (AMENDED — supersedes AI Gateway)
 
-Eve's init scaffold uses `"anthropic/claude-sonnet-4.6"` (dotted, not dashed).
-The AI Gateway resolves this correctly. Do NOT use `"anthropic/claude-sonnet-4-6"`
-(dashed) — Eve's own scaffold uses the dotted form. Set `EVE_MODEL=anthropic/claude-sonnet-4.6`
-in `.env`.
+The project uses a **direct Groq provider**, NOT an AI Gateway model string
+(AI Gateway requires a Vercel credit card the user does not have). `agent/agent.ts`:
+
+```ts
+import { createGroq } from '@ai-sdk/groq'
+const groq = createGroq({ apiKey: process.env.GROQ_API_KEY })
+export default defineAgent({ model: groq(process.env.EVE_MODEL || 'llama-3.3-70b-versatile') })
+```
+
+- Package: `@ai-sdk/groq@4.0.0-beta.54` — its `@ai-sdk/provider` is `4.0.0-beta.19`, the
+  EXACT version `ai@7.0.0-beta.178` uses, so the model instance is interface-compatible.
+- `GROQ_API_KEY` lives in `.env.local` (gitignored). `EVE_MODEL` overrides the Groq **model
+  name** only (default `llama-3.3-70b-versatile`, a tool-calling-capable model) — it can no
+  longer carry a fully-qualified gateway string like `anthropic/...`.
+- Verified end-to-end: a session streamed a real reply (`PONG`, finishReason `stop`,
+  modelId `meta/llama-3.3-70b`).
 
 ---
 

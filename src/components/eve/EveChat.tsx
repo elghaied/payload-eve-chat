@@ -1,8 +1,8 @@
 'use client'
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useCallback, useRef, useState } from 'react'
 import { useRouter } from '@payloadcms/ui'
-import { useChat } from '@ai-sdk/react'
-import { DefaultChatTransport, type UIMessage } from 'ai'
+import { useEveAgent } from 'eve/react'
+import type { EveDynamicToolPart } from 'eve/react'
 import {
   Conversation,
   ConversationContent,
@@ -12,262 +12,192 @@ import {
 import { Message, MessageContent, MessageResponse } from '@/components/ai-elements/message'
 import {
   PromptInput,
-  PromptInputButton,
   PromptInputFooter,
   type PromptInputMessage,
   PromptInputSubmit,
   PromptInputTextarea,
-  PromptInputTools,
 } from '@/components/ai-elements/prompt-input'
 import { Tool, ToolContent, ToolHeader, ToolInput, ToolOutput } from '@/components/ai-elements/tool'
 import { Reasoning } from '@/components/ai-elements/reasoning'
 import { ConversationSidebar, type ConversationSummary } from './ConversationSidebar'
-import { PostPreviewPanel } from './PostPreviewPanel'
-import { buildApprovalMessage, type PostDraft } from '@/eve/approval-message'
-import { useVoice } from './useVoice'
-import { stripSpeak } from './speakable'
-import { TooltipProvider } from '@/components/ui/tooltip'
-import { EqualizerBars } from './EqualizerBars'
-import { MicIcon } from 'lucide-react'
 import './eve.css'
 
 export { type ConversationSummary }
 
-export const EveChat: React.FC<{
-  initialMessages: UIMessage[]
+// ── Types ─────────────────────────────────────────────────────────────────────
+
+export interface EveChatProps {
   conversations: ConversationSummary[]
   activeId?: string
-  sttAvailable?: boolean
-  ttsAvailable?: boolean
-}> = ({ initialMessages, conversations, activeId, sttAvailable = false, ttsAvailable = false }) => {
+  initialSession?: { sessionId?: string; continuationToken?: string; streamIndex: number }
+  initialEvents?: unknown[]
+}
+
+// ── Session persistence helper ────────────────────────────────────────────────
+
+async function persistSession(opts: {
+  sessionId: string
+  continuationToken?: string
+  streamIndex: number
+  title?: string
+}) {
+  try {
+    await fetch('/api/eve/session-index', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(opts),
+    })
+  } catch {
+    // Best-effort — don't break the chat on network failure.
+  }
+}
+
+// ── Tool part renderer ────────────────────────────────────────────────────────
+
+function renderToolPart(part: EveDynamicToolPart, key: string): React.ReactNode {
+  const output =
+    part.state === 'output-available' ? (
+      <ToolOutput output={part.output} errorText={undefined} />
+    ) : part.state === 'output-error' ? (
+      <ToolOutput output={undefined} errorText={part.errorText} />
+    ) : null
+
+  return (
+    <Tool key={key}>
+      <ToolHeader type="dynamic-tool" toolName={part.toolName} state={part.state} />
+      <ToolContent>
+        <ToolInput input={part.input} />
+        {output}
+      </ToolContent>
+    </Tool>
+  )
+}
+
+// ── Component ─────────────────────────────────────────────────────────────────
+
+export const EveChat: React.FC<EveChatProps> = ({
+  conversations,
+  activeId,
+  initialSession,
+  initialEvents,
+}) => {
   const router = useRouter()
-  // The conversation this chat persists to. Starts from the URL; for a brand-new
-  // chat it's undefined until the server creates one and we adopt the returned id.
-  // It is sent per-message (not used as the useChat id) so adopting it never
-  // resets the visible messages.
-  const [conversationId, setConversationId] = useState<string | undefined>(activeId)
   const [input, setInput] = useState('')
-  // Sidebar list, seeded from the server. A newly created conversation is added
-  // here client-side so it appears immediately (a server refresh would reset the
-  // live chat). Re-seeds from the prop on remount (i.e. when navigating threads).
   const [sidebarConversations, setSidebarConversations] = useState(conversations)
 
-  const { messages, sendMessage, status, setMessages, stop } = useChat({
-    // Stable chat identity for this mount. EveView keys EveChat by activeId, so
-    // switching threads remounts the component; this id must NOT change when we
-    // adopt a conversation id mid-session (that would clear the messages).
-    id: activeId ?? 'new',
-    messages: initialMessages,
-    transport: new DefaultChatTransport({
-      api: '/api/eve',
-      // Forward the conversation id + voice flag supplied per-message via sendMessage's body.
-      prepareSendMessagesRequest: ({ messages: msgs, body }) => ({
-        body: { messages: msgs, conversationId: body?.conversationId, voice: body?.voice },
-      }),
-    }),
-    onFinish: ({ message, messages: finalMessages }) => {
-      // First reply of a new chat: adopt the server-created conversation id so
-      // follow-up turns in this session persist to the same thread instead of
-      // creating a new conversation each time, and add it to the sidebar.
-      const meta = message.metadata as { conversationId?: string } | undefined
-      const id = meta?.conversationId
-      if (id && !conversationId) {
-        setConversationId(id)
-        const title =
-          finalMessages
-            .find((m) => m.role === 'user')
-            ?.parts.flatMap((p) => (p.type === 'text' ? [p.text] : []))[0]
-            ?.slice(0, 80) || 'New conversation'
-        setSidebarConversations((prev) =>
-          prev.some((c) => c.id === id) ? prev : [{ id, title }, ...prev],
-        )
-      }
+  // Track the title for the current thread (first user message).
+  const titleRef = useRef<string | undefined>(undefined)
+
+  const onSessionChange = useCallback(
+    (session: { sessionId?: string; continuationToken?: string; streamIndex: number }) => {
+      if (!session.sessionId) return
+      void persistSession({
+        sessionId: session.sessionId,
+        continuationToken: session.continuationToken,
+        streamIndex: session.streamIndex,
+        title: titleRef.current,
+      })
+    },
+    [],
+  )
+
+  // Same-origin + cookie auth is automatic. No host/auth needed.
+  const agent = useEveAgent({
+    initialSession: initialSession as { sessionId?: string; continuationToken?: string; streamIndex: number } | undefined,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    initialEvents: initialEvents as any,
+    onSessionChange,
+    onFinish: (snapshot) => {
+      const sid = snapshot.session.sessionId
+      if (!sid) return
+      void persistSession({
+        sessionId: sid,
+        continuationToken: snapshot.session.continuationToken,
+        streamIndex: snapshot.session.streamIndex,
+        title: titleRef.current,
+      })
     },
   })
 
-  // Latest assistant message text (concatenated text parts) + its id drive
-  // sentence-streamed TTS. Intentionally re-derived every render so it tracks the
-  // live streaming updates — do NOT wrap this in useMemo.
-  const { assistantText, assistantMessageId } = (() => {
-    for (let i = messages.length - 1; i >= 0; i--) {
-      if (messages[i].role === 'assistant') {
-        return {
-          assistantText: messages[i].parts
-            .filter((p) => p.type === 'text')
-            .map((p) => (p as { text: string }).text)
-            .join(''),
-          assistantMessageId: messages[i].id,
-        }
-      }
-    }
-    return { assistantText: undefined, assistantMessageId: undefined }
-  })()
-
-  // The post draft currently shown in the side panel (from a proposePost tool part).
-  const [activeDraft, setActiveDraft] = useState<{ id: string; draft: PostDraft } | null>(null)
-  // The proposePost call id we've already surfaced, so re-renders don't reopen it
-  // after the user closes the panel.
-  const handledProposeIdRef = useRef<string | undefined>(undefined)
-
-  // Open the panel when the agent proposes a post.
-  // Only act on a terminal part state so we never open with partial/streaming input.
-  useEffect(() => {
-    for (let i = messages.length - 1; i >= 0; i--) {
-      const m = messages[i]
-      if (m.role !== 'assistant') continue
-      for (let j = m.parts.length - 1; j >= 0; j--) {
-        const p = m.parts[j] as {
-          type: string
-          state?: string
-          toolCallId?: string
-          input?: unknown
-          output?: unknown
-        }
-        if (p.type !== 'tool-proposePost') continue
-        // If the part is still streaming/pending, wait — don't set the ref yet.
-        if (p.state !== 'output-available' && p.state !== 'input-available') return
-        // Completed tool parts always have a toolCallId; skip if absent.
-        const id = p.toolCallId
-        if (!id) return
-        const draft = (p.output ?? p.input) as PostDraft | undefined
-        if (draft && id !== handledProposeIdRef.current) {
-          handledProposeIdRef.current = id
-          setActiveDraft({ id, draft })
-        }
-        return
-      }
-    }
-  }, [messages])
-
-  const handleApprovePost = (final: PostDraft) => {
-    // Re-engage the agent to create the post via MCP, using the approved content.
-    sendMessage({ text: buildApprovalMessage(final) }, { body: { conversationId } })
-    setActiveDraft(null)
-  }
-
-  const voice = useVoice({
-    sttAvailable,
-    ttsAvailable,
-    status,
-    assistantText,
-    assistantMessageId,
-    // Voice-originated turn: flag it so the API asks Eve for a spoken <speak> summary.
-    onTranscript: (text) => sendMessage({ text }, { body: { conversationId, voice: true } }),
-  })
-
-  const handleSubmit = (message: PromptInputMessage) => {
-    if (!message.text?.trim()) return
-    // Read conversationId at send time (latest state) and pass it per-message —
-    // no stale closure even right after adopting a new id.
-    sendMessage({ text: message.text }, { body: { conversationId } })
+  const handleSubmit = async (message: PromptInputMessage) => {
+    const text = message.text?.trim()
+    if (!text) return
     setInput('')
-  }
 
-  const handleSelectConversation = (id: string) => {
-    router.push(`?conversation=${id}`)
-  }
+    const isNew = !activeId && !agent.session.sessionId
+    // Capture the first user message as the title for a new thread.
+    if (isNew && !titleRef.current) {
+      titleRef.current = text.slice(0, 80)
+    }
 
-  const handleNewChat = () => {
-    setConversationId(undefined)
-    setMessages([])
-    router.push('?')
+    await agent.send({ message: text })
+
+    // After send resolves for a brand-new chat, push the new sessionId into
+    // the URL so follow-ups persist to the same thread.
+    if (isNew) {
+      const sid = agent.session.sessionId
+      if (sid) {
+        setSidebarConversations((prev) =>
+          prev.some((c) => c.id === sid)
+            ? prev
+            : [{ id: sid, title: titleRef.current ?? text.slice(0, 80) }, ...prev],
+        )
+        router.push(`?conversation=${sid}`)
+      }
+    }
   }
 
   return (
-    <TooltipProvider>
     <div className="eve-scope flex h-[calc(100dvh-var(--app-header-height,48px))] min-h-[600px]">
       <ConversationSidebar
         conversations={sidebarConversations}
-        activeId={conversationId}
-        onSelect={handleSelectConversation}
-        onNew={handleNewChat}
+        activeId={activeId}
+        onSelect={(id) => router.push(`?conversation=${id}`)}
+        onNew={() => router.push('?')}
       />
       <div className="flex min-w-0 flex-1 flex-col p-4">
         <Conversation className="flex-1">
           <ConversationContent>
-            {messages.length === 0 ? (
+            {agent.data.messages.length === 0 ? (
               <ConversationEmptyState
                 title="Chat with Eve"
                 description="Ask Eve to create a post or manage your tasks."
               />
             ) : (
-              messages.map((message, index) => {
-                // Fall back to the index when a message has no id (e.g. a rehydrated
-                // record from an older save) so React keys stay unique.
-                const messageKey = message.id || `message-${index}`
+              agent.data.messages.map((m, index) => {
+                const messageKey = m.id || `message-${index}`
                 return (
-                <Message from={message.role} key={messageKey}>
-                  <MessageContent>
-                    {message.parts.map((part, i) => {
-                      if (part.type === 'reasoning') {
-                        return (
-                          <Reasoning
-                            key={`${messageKey}-${i}`}
-                            text={part.text}
-                            isStreaming={part.state === 'streaming'}
-                          />
-                        )
-                      }
-                      if (part.type === 'text') {
-                        return (
-                          <MessageResponse key={`${messageKey}-${i}`}>
-                            {stripSpeak(part.text)}
-                          </MessageResponse>
-                        )
-                      }
-                      if (part.type === 'tool-proposePost') {
-                        const tp = part as {
-                          state?: string
-                          toolCallId?: string
-                          input?: unknown
-                          output?: unknown
+                  <Message from={m.role} key={messageKey}>
+                    <MessageContent>
+                      {m.parts.map((part, i) => {
+                        const partKey = `${messageKey}-${i}`
+
+                        if (part.type === 'text') {
+                          return (
+                            <MessageResponse key={partKey}>{part.text}</MessageResponse>
+                          )
                         }
-                        // Only render the affordance once the part is at a terminal state
-                        // and has a stable toolCallId, matching the open-effect guard.
-                        if (
-                          (tp.state !== 'output-available' && tp.state !== 'input-available') ||
-                          !tp.toolCallId
-                        ) {
-                          return null
-                        }
-                        const id = tp.toolCallId
-                        const draft = (tp.output ?? tp.input) as PostDraft | undefined
-                        return (
-                          <button
-                            className="text-left text-muted-foreground text-sm underline-offset-2 hover:text-foreground hover:underline"
-                            key={`${messageKey}-${i}`}
-                            onClick={() =>
-                              draft && setActiveDraft({ id, draft })
-                            }
-                            type="button"
-                          >
-                            📝 Drafted a post{draft?.title ? ` — "${draft.title}"` : ''} — review it →
-                          </button>
-                        )
-                      }
-                      if (part.type === 'dynamic-tool') {
-                        return (
-                          <Tool key={`${messageKey}-${i}`}>
-                            <ToolHeader
-                              type="dynamic-tool"
-                              toolName={part.toolName}
-                              state={part.state}
+
+                        if (part.type === 'reasoning') {
+                          return (
+                            <Reasoning
+                              key={partKey}
+                              text={part.text}
+                              isStreaming={part.state === 'streaming'}
                             />
-                            <ToolContent>
-                              <ToolInput input={part.input} />
-                              {part.state === 'output-available' ? (
-                                <ToolOutput output={part.output} errorText={undefined} />
-                              ) : part.state === 'output-error' ? (
-                                <ToolOutput output={undefined} errorText={part.errorText} />
-                              ) : null}
-                            </ToolContent>
-                          </Tool>
-                        )
-                      }
-                      return null
-                    })}
-                  </MessageContent>
-                </Message>
+                          )
+                        }
+
+                        if (part.type === 'dynamic-tool') {
+                          return renderToolPart(part, partKey)
+                        }
+
+                        // step-start: no visible output
+                        return null
+                      })}
+                    </MessageContent>
+                  </Message>
                 )
               })
             )}
@@ -282,44 +212,16 @@ export const EveChat: React.FC<{
             onChange={(e) => setInput(e.currentTarget.value)}
           />
           <PromptInputFooter>
-            <PromptInputTools>
-              <PromptInputButton
-                onClick={() => (voice.active ? voice.stop() : void voice.start())}
-                variant={voice.active ? 'default' : 'ghost'}
-                tooltip={voice.active ? `Voice: ${voice.state} (click to stop)` : 'Start voice chat'}
-                aria-label={voice.active ? 'Stop voice chat' : 'Start voice chat'}
-              >
-                {voice.active ? (
-                  <EqualizerBars
-                    className={
-                      voice.state === 'thinking' || voice.state === 'transcribing'
-                        ? 'opacity-60'
-                        : undefined
-                    }
-                  />
-                ) : (
-                  <MicIcon className="size-4" />
-                )}
-              </PromptInputButton>
-            </PromptInputTools>
-            {/* Enabled while generating (acts as Stop); otherwise needs input text. */}
             <PromptInputSubmit
-              status={status}
-              onStop={stop}
-              disabled={status !== 'streaming' && status !== 'submitted' && !input.trim()}
+              status={agent.status}
+              onStop={agent.stop}
+              disabled={
+                agent.status !== 'streaming' && agent.status !== 'submitted' && !input.trim()
+              }
             />
           </PromptInputFooter>
         </PromptInput>
       </div>
-      {activeDraft && (
-        <PostPreviewPanel
-          key={activeDraft.id}
-          draft={activeDraft.draft}
-          onApprove={handleApprovePost}
-          onClose={() => setActiveDraft(null)}
-        />
-      )}
     </div>
-    </TooltipProvider>
   )
 }

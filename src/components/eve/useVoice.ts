@@ -101,6 +101,13 @@ export function useVoice({
   const [active, setActive] = useState(false)
   const [state, setState] = useState<VoiceState>('idle')
 
+  // Mirror `active` into a ref so closures (e.g. sttWs.onclose) always read
+  // the current value without capturing a stale snapshot from useState.
+  const activeRef = useRef(false)
+  useEffect(() => {
+    activeRef.current = active
+  })
+
   // ── STT refs ──────────────────────────────────────────────────────────────
   const sttWsRef = useRef<WebSocket | null>(null)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
@@ -208,16 +215,20 @@ export function useVoice({
         // Text messages: Flushed / Cleared / Metadata — no action needed.
       }
 
+      // Wait for open before caller sends text.
+      // Use addEventListener with { once: true } for the open-wait rejection so
+      // we don't clobber the persistent onerror handler we set after the await.
+      await new Promise<void>((resolve, reject) => {
+        ws.addEventListener('open', () => resolve(), { once: true })
+        ws.addEventListener('error', () => reject(new Error('TTS WS failed to open')), { once: true })
+      })
+
+      // Persistent post-handshake error handler.  Assigned AFTER the open-wait
+      // so a mid-session TTS error is always surfaced rather than swallowed.
       ws.onerror = () => {
         // Non-fatal: TTS WebSocket error — voice continues but Eve won't be heard.
         toast.error("Voice: TTS connection error — Eve's replies won't be spoken.")
       }
-
-      // Wait for open before caller sends text.
-      await new Promise<void>((resolve, reject) => {
-        ws.onopen = () => resolve()
-        ws.onerror = () => reject(new Error('TTS WS failed to open'))
-      })
     },
     [enqueueAudio],
   )
@@ -311,6 +322,10 @@ export function useVoice({
       await openTtsWs(ttsToken)
     } catch {
       toast.error("Voice: TTS connection failed — Eve's replies won't be spoken.")
+      // Close the AudioContext that was just created to avoid a resource leak
+      // when TTS fails during handshake (STT still starts so voice continues).
+      void audioCtxRef.current?.close().catch(() => {})
+      audioCtxRef.current = null
       // Continue: STT still works.
     }
 
@@ -372,20 +387,33 @@ export function useVoice({
     }
 
     sttWs.onclose = () => {
-      // If still active (i.e. not stopped by user) — surface the disconnect.
-      if (active) {
+      // Read from the ref so we see the live value, not the stale snapshot
+      // captured when start() was called (before setActive(true) ran).
+      if (activeRef.current) {
         toast.error('Voice: STT disconnected.')
       }
     }
 
     // Wait for STT WS to open before starting the MediaRecorder.
-    await new Promise<void>((resolve) => {
-      if (sttWs.readyState === WebSocket.OPEN) {
-        resolve()
-      } else {
-        sttWs.addEventListener('open', () => resolve(), { once: true })
-      }
-    })
+    // Both error and close before open are treated as fatal so the Promise
+    // doesn't hang forever if the handshake fails.
+    try {
+      await new Promise<void>((resolve, reject) => {
+        if (sttWs.readyState === WebSocket.OPEN) {
+          resolve()
+        } else {
+          sttWs.addEventListener('open', () => resolve(), { once: true })
+          sttWs.addEventListener('error', () => reject(new Error('STT WS failed to open')), { once: true })
+          sttWs.addEventListener('close', () => reject(new Error('STT WS closed before open')), { once: true })
+        }
+      })
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Voice: STT failed to connect')
+      // Clean up everything already allocated.
+      stream.getTracks().forEach((t) => t.stop())
+      sttWsRef.current = null
+      return
+    }
 
     // Start MediaRecorder — sends webm/opus blobs (no encoding/sample_rate params needed).
     const recorder = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' })
@@ -400,7 +428,10 @@ export function useVoice({
 
     setActive(true)
     setState('listening')
-  }, [voiceAvailable, openTtsWs, clearPlayback, onTranscript, onBargeIn, active])
+    // Note: `active` is intentionally omitted from the deps — we read `activeRef.current`
+    // inside the closure instead, so start/toggle identities stay stable after voice starts.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [voiceAvailable, openTtsWs, clearPlayback, onTranscript, onBargeIn])
 
   // ── stop() ─────────────────────────────────────────────────────────────────
 

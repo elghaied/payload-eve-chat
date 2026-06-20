@@ -78,7 +78,8 @@ describe('POST /api/deepgram/token', () => {
     const body = await res.json()
     expect(body).toMatchObject({ token: 'jwt-abc', expires_in: 30 })
 
-    // Key must NOT appear in the fetch call's Authorization header (just check it uses Bearer form)
+    // Verify the server's outgoing request to Deepgram (server-to-Deepgram, never sent to the
+    // client) uses the API key in a Token Authorization header — not a Bearer/JWT.
     expect(mockFetch).toHaveBeenCalledWith(
       'https://api.deepgram.com/v1/auth/grant',
       expect.objectContaining({

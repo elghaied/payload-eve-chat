@@ -125,3 +125,86 @@ The following cannot be tested without a real mic and a set `DEEPGRAM_API_KEY`:
 - The `MediaRecorder` mime type `'audio/webm;codecs=opus'` is standard in Chrome/Edge/Firefox on desktop. Safari may require a fallback. This is an acceptable known limitation for the admin-facing voice feature (Payload admin UI is primarily a desktop Chrome/Firefox surface).
 - `AudioContext` is suspended in Chrome until a user gesture — the mic button click counts as a user gesture, so the `new AudioContext()` call inside `start()` should be fine.
 - The TTS WebSocket error handler falls back to a toast and continues (STT still works without TTS). This degrades gracefully.
+
+---
+
+## A3 Code-Review Fix Pass — `fix(eve): harden Deepgram voice WS error handling (A3 review)`
+
+Applied findings from the A3 code review. All changes are in
+`src/components/eve/useVoice.ts` and `src/app/api/deepgram/token/route.test.ts`.
+
+### Finding 1 — [Critical] Dead TTS `onerror` after handshake
+
+**Problem:** The persistent `ws.onerror` toast handler set before the open-wait Promise was
+clobbered by the rejecting `onerror` assigned _inside_ the Promise, leaving mid-session TTS
+errors silent.
+
+**Fix:** Removed the pre-await `ws.onerror` assignment. Changed the open-wait to use
+`ws.addEventListener('error', …, { once: true })` so it fires exactly once for handshake
+rejection without overwriting the handler property. After `await` resolves, assigned a
+persistent `ws.onerror` handler that toasts the mid-session error.
+
+### Finding 2 — [Important] Stale `active` in `sttWs.onclose`
+
+**Problem:** `onclose` captured the `active` state variable at the time `start()` was defined
+(always `false` before `setActive(true)` ran), so the unexpected-disconnect toast never fired.
+
+**Fix:** Added `const activeRef = useRef(false)` and a `useEffect(() => { activeRef.current =
+active })` (no deps — runs after every render) to mirror live state into the ref. `onclose`
+now reads `activeRef.current`.
+
+### Finding 3 — [Important] `active` in `start` dependency array
+
+**Problem:** `active` in the `useCallback` deps caused `start` (and therefore `toggle`) to
+get a new identity each time voice was activated, breaking stable-reference assumptions and
+adding a re-render on every state change.
+
+**Fix:** Removed `active` from the deps array. All internal reads of `active` inside `start`
+already used `activeRef.current` after Finding 2. Added an `eslint-disable-next-line
+react-hooks/exhaustive-deps` comment with explanation.
+
+### Finding 4 — [Important] Misleading test comment
+
+**Problem:** The comment at `route.test.ts` line 81 said "Key must NOT appear … (just check it
+uses Bearer form)" — contradicting the assertion which does verify the key IS present in the
+server-to-Deepgram request.
+
+**Fix:** Rewrote the comment to: "Verify the server's outgoing request to Deepgram
+(server-to-Deepgram, never sent to the client) uses the API key in a Token Authorization
+header — not a Bearer/JWT."
+
+### Finding 5 — [Minor] STT open-wait hangs forever on error/close
+
+**Problem:** The STT open-wait `Promise` had no rejection path — if the WS errored or closed
+before `open`, the Promise would hang indefinitely.
+
+**Fix:** Replaced the bare `addEventListener('open', resolve)` with a full resolve/reject pair:
+`open` → `resolve`, `error` → `reject`, `close` → `reject`. Wrapped the await in `try/catch`
+that toasts the error and returns early (cleaning up the mic stream).
+
+### Finding 6 — [Minor] AudioContext leak on `openTtsWs` failure
+
+**Problem:** `AudioContext` was created immediately before `openTtsWs`. If TTS handshake
+failed, the `catch` block continued to STT setup without closing the newly created
+`AudioContext`, leaking it for the duration of the STT-only session.
+
+**Fix:** Added `void audioCtxRef.current?.close().catch(() => {})` + `audioCtxRef.current =
+null` inside the `openTtsWs` catch block. The comment "Continue: STT still works" is retained
+because STT does still start; the AudioContext is re-created later only if TTS opens.
+(Note: TTS-only continuation without AudioContext is intentional — the hook already guards
+`if (!ctx) return` in `playNext`.)
+
+### Verification
+
+```
+pnpm exec tsc --noEmit
+→ Exit 0, 0 errors
+
+pnpm run test:int
+→ Test Files  11 passed (11)
+→ Tests       70 passed (70)
+→ Duration 1.66s
+
+node_modules/.bin/eve info
+→ Diagnostics   0 errors, 0 warnings
+```

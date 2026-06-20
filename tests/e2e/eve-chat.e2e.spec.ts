@@ -102,4 +102,49 @@ test.describe('Eve chat — task creation', () => {
       timeout: 15_000,
     })
   })
+
+  test('reopening a thread replays its history (B2)', async () => {
+    const marker = `Ping ${Date.now()}`
+
+    // Start a fresh thread with a distinctive user message.
+    await page.goto(`${SERVER_URL}/admin/eve`)
+    const composer = page.getByPlaceholder('Message Eve…')
+    await expect(composer).toBeEditable({ timeout: COMPOSER_READY_TIMEOUT_MS })
+    await composer.fill(`Say "${marker}" back to me.`)
+    await page.keyboard.press('Enter')
+
+    // Wait for the turn to start then finish (button "Submit" → "Stop" → "Submit").
+    await expect(page.getByRole('button', { name: 'Stop' })).toBeVisible({ timeout: 15_000 })
+    await expect(page.getByRole('button', { name: 'Submit' })).toBeVisible({
+      timeout: EVE_TURN_TIMEOUT_MS,
+    })
+
+    // The app adopted the new session into the URL (?conversation=<id>).
+    await page.waitForURL(/\?conversation=/, { timeout: 15_000 })
+    const threadUrl = page.url()
+
+    // Wait for the session index to be persisted server-side before reloading.
+    // (persistSession is fire-and-forget; a full reload before it settles would
+    // find no Conversations row, so the cursor — and thus the replay — would be lost.)
+    await expect
+      .poll(
+        async () => {
+          const res = await page.request.get(`${SERVER_URL}/api/conversations?limit=1`)
+          const json = await res.json()
+          return json.totalDocs ?? 0
+        },
+        { timeout: 20_000 },
+      )
+      .toBeGreaterThan(0)
+
+    // Reload the thread from scratch — EveView loads the stored cursor and EveChat
+    // replays history into the transcript.
+    await page.goto(threadUrl)
+
+    // History must replay: the original user message is visible again (the transcript
+    // was empty on reopen before B2).
+    await expect(page.getByText(marker, { exact: false }).first()).toBeVisible({
+      timeout: EVE_TURN_TIMEOUT_MS,
+    })
+  })
 })

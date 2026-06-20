@@ -1,3 +1,8 @@
+// Load .env FIRST: Playwright worker processes don't inherit the dotenv config
+// loaded in playwright.config.ts, so without this DATABASE_URL is undefined in the
+// worker and getPayload connects to the wrong DB (the seeded user then isn't visible
+// to the dev server → admin shows "create first user" and logins fail).
+import 'dotenv/config'
 import { getPayload } from 'payload'
 import config from '../../src/payload.config.js'
 

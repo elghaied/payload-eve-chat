@@ -19,10 +19,10 @@ voice, Eve's built-in web search) so it deploys to Vercel with no Docker/self-ho
 - **Post preview (approve-before-create)** — when you ask Eve to write a post, it calls
   `propose_post` and shows an **editable** preview panel; the post is only created via
   `createDocumentFromMarkdown` after you review/edit and approve.
-- **Web search + read-URL** — `web_search` (runs through the AI Gateway with a Perplexity Sonar
-  model; override with `WEB_SEARCH_MODEL`) and the built-in `web_fetch` (fetch any URL as Markdown).
-  No SearXNG, no extra key. (Provider-native `web_search` is intentionally overridden — it's
-  unreliable through the gateway: unsupported on Groq-served models and hangs on Anthropic.)
+- **Web search + read-URL** — Eve's provider-native `web_search` (clickable result links) and the
+  built-in `web_fetch` (fetch any URL as Markdown), both through the AI Gateway. No SearXNG, no
+  extra key. A client-side **stall watchdog** aborts a turn that goes silent for 60 s, so a stalled
+  provider stream (a known gateway risk for server-side tools) can't hang the chat indefinitely.
 - **Hands-free voice** — streaming speech-to-text and text-to-speech via **Deepgram** (Nova-3 STT
   + Aura-2 TTS) with end-of-utterance detection and barge-in. The mic button appears when
   `DEEPGRAM_API_KEY` is configured. The key always stays server-side: **STT** uses a short-lived

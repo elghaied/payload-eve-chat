@@ -251,6 +251,15 @@ const EveChatInner: React.FC<EveChatProps & { initialEvents: unknown[]; voiceAva
     [],
   )
 
+  // Stall watchdog: Eve sets no model-call timeout, so a stalled provider stream (e.g. a
+  // native web_search that never returns) would hang the turn forever. We track the time of
+  // the last stream event and abort a turn that goes silent too long.
+  const [stalled, setStalled] = useState(false)
+  const lastEventAtRef = useRef(0)
+  const handleEvent = useCallback(() => {
+    lastEventAtRef.current = Date.now()
+  }, [])
+
   // Same-origin + cookie auth is automatic. No host/auth needed.
   const agent = useEveAgent({
     initialSession: initialSession as SessionCursor | undefined,
@@ -259,7 +268,24 @@ const EveChatInner: React.FC<EveChatProps & { initialEvents: unknown[]; voiceAva
     // Persistence is driven solely by onSessionChange (fires whenever the session
     // cursor advances, including after a turn completes) — no duplicate onFinish write.
     onSessionChange,
+    onEvent: handleEvent,
   })
+
+  // While a turn is in flight, abort it if no stream event arrives for STALL_MS — bounding the
+  // worst case for a stalled web_search / provider stream (which otherwise hangs indefinitely).
+  useEffect(() => {
+    if (agent.status !== 'streaming' && agent.status !== 'submitted') return
+    lastEventAtRef.current = Date.now()
+    const STALL_MS = 60_000
+    const id = window.setInterval(() => {
+      if (Date.now() - lastEventAtRef.current > STALL_MS) {
+        agent.stop()
+        setStalled(true)
+      }
+    }, 5000)
+    return () => window.clearInterval(id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [agent.status])
 
   // ── Voice ─────────────────────────────────────────────────────────────────
 
@@ -277,6 +303,7 @@ const EveChatInner: React.FC<EveChatProps & { initialEvents: unknown[]; voiceAva
     assistantText: latestAssistantText,
     assistantMessageId: latestAssistantId,
     onTranscript: (text) => {
+      setStalled(false)
       void agent.send({ message: text, clientContext: VOICE_REPLY_INSTRUCTION })
     },
     onInterrupt: () => {
@@ -291,6 +318,7 @@ const EveChatInner: React.FC<EveChatProps & { initialEvents: unknown[]; voiceAva
     if (sendingRef.current) return // ignore re-entrant submits while a send is in flight
     sendingRef.current = true
     setInput('')
+    setStalled(false)
 
     const isNew = !activeId && !agent.session.sessionId
     // Capture the first user message as the title for a new thread.
@@ -329,8 +357,9 @@ const EveChatInner: React.FC<EveChatProps & { initialEvents: unknown[]; voiceAva
   )
   const agentBusy = agent.status === 'submitted' || agent.status === 'streaming'
 
-  // Retry after a failed turn by re-sending the most recent user message.
+  // Retry after a failed/stalled turn by re-sending the most recent user message.
   const handleRetry = useCallback(() => {
+    setStalled(false)
     const messages = agent.data.messages
     for (let i = messages.length - 1; i >= 0; i--) {
       const m = messages[i]
@@ -407,9 +436,15 @@ const EveChatInner: React.FC<EveChatProps & { initialEvents: unknown[]; voiceAva
                 )
               })
             )}
-            {agent.status === 'submitted' && <ThinkingIndicator />}
+            {agent.status === 'submitted' && !stalled && <ThinkingIndicator />}
             {agent.status === 'error' && (
               <ErrorNotice message={agent.error?.message} onRetry={handleRetry} />
+            )}
+            {stalled && agent.status !== 'error' && (
+              <ErrorNotice
+                message="The response stalled — often a slow web search — and was stopped. Please try again."
+                onRetry={handleRetry}
+              />
             )}
           </ConversationContent>
           <ConversationScrollButton />

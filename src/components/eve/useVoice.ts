@@ -1,282 +1,456 @@
 'use client'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from '@payloadcms/ui'
+import type { UseEveAgentStatus } from 'eve/react'
 import { createSentenceStreamer } from './sentenceStreamer'
 import { extractSpeak, stripForSpeech } from './speakable'
-import { encodeWav } from './wav'
 
-// @ricky0123/vad-web needs to fetch its worklet + Silero ONNX model and the
-// onnxruntime-web WASM at runtime. We serve these self-hosted from /vad/ (copied
-// into public/vad/ by scripts/copy-vad-assets.mjs) rather than a CDN, so no
-// third-party code is loaded into the admin context and voice works offline.
-const VAD_ASSET_BASE = '/vad/'
-const ORT_WASM_BASE = '/vad/'
+// ── Constants ──────────────────────────────────────────────────────────────────
 
-export type VoiceState = 'idle' | 'listening' | 'transcribing' | 'thinking' | 'speaking'
+const DG_STT_URL =
+  'wss://api.deepgram.com/v1/listen' +
+  '?model=nova-3' +
+  '&language=en' +
+  '&interim_results=true' +
+  '&endpointing=300' +
+  '&utterance_end_ms=1000' +
+  '&vad_events=true' +
+  '&smart_format=true' +
+  '&punctuate=true'
 
-type UseVoiceArgs = {
-  sttAvailable: boolean // server attached an STT service
-  ttsAvailable: boolean // server attached a TTS service
-  status: string // useChat status ('streaming' | 'submitted' | 'ready' | 'error')
-  assistantText: string | undefined // latest streaming assistant message text
-  assistantMessageId: string | undefined // id of the latest assistant message (resets the streamer per turn)
-  onTranscript: (text: string) => void // -> sendMessage
+const DG_TTS_URL =
+  'wss://api.deepgram.com/v1/speak' +
+  '?model=aura-2-thalia-en' +
+  '&encoding=linear16' +
+  '&sample_rate=24000'
+
+const TTS_SAMPLE_RATE = 24000
+
+// ── Public types ───────────────────────────────────────────────────────────────
+
+export type VoiceState = 'idle' | 'listening' | 'thinking' | 'speaking'
+
+export type UseVoiceArgs = {
+  /** True only when DEEPGRAM_API_KEY is set server-side. */
+  voiceAvailable: boolean
+  /** Current agent status from useEveAgent. */
+  status: UseEveAgentStatus
+  /** Latest assistant message text (streams in). */
+  assistantText: string
+  /** ID of the latest assistant message (resets the streamer per turn). */
+  assistantMessageId: string | undefined
+  /** Called when a complete utterance is transcribed — send to the agent. */
+  onTranscript: (text: string) => void
+  /** Optional: called on barge-in so the caller can stop an in-flight agent turn. */
+  onBargeIn?: () => void
 }
 
+// ── Internal helpers ───────────────────────────────────────────────────────────
+
+/** Fetch a short-lived Deepgram access token from our server-side route. */
+async function fetchDeepgramToken(): Promise<string> {
+  const res = await fetch('/api/deepgram/token', {
+    method: 'POST',
+    credentials: 'same-origin',
+  })
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as { error?: string }
+    throw new Error(body.error ?? `Token request failed (${res.status})`)
+  }
+  const { token } = (await res.json()) as { token: string }
+  if (!token) throw new Error('No token in response')
+  return token
+}
+
+/** Decode a linear16 binary ArrayBuffer into a Float32Array for AudioContext. */
+export function decodeLinear16(buffer: ArrayBuffer): Float32Array {
+  const int16 = new Int16Array(buffer)
+  const float32 = new Float32Array(int16.length)
+  for (let i = 0; i < int16.length; i++) {
+    float32[i] = int16[i]! / 32768
+  }
+  return float32
+}
+
+// ── Hook ───────────────────────────────────────────────────────────────────────
+
 /**
- * Hands-free voice loop: Silero VAD captures utterances -> /transcribe -> onTranscript,
- * and (when TTS is attached) the streaming assistant text is split into sentences ->
- * /speak -> sequential playback. Speaking while Eve talks (barge-in) aborts playback
- * and resumes listening. STT and TTS are each optional; the not-attached cases notify
- * via the admin toast. Browser-only; relies on getUserMedia + Web Audio + @ricky0123/vad-web.
+ * Hands-free voice loop for Eve using Deepgram cloud STT and Aura TTS.
+ *
+ * Flow:
+ *   start() → getUserMedia + token → STT WebSocket (MediaRecorder sends blobs)
+ *           → on speech_final/UtteranceEnd → onTranscript → agent sends reply
+ *           → reply streams → extractSpeak → sentence splitter → TTS WebSocket
+ *           → binary linear16 frames → AudioContext FIFO queue → playback
+ *
+ * Barge-in:
+ *   STT SpeechStarted while TTS playing → stop audio, send Clear to TTS WS,
+ *   call onBargeIn() so caller can abort the agent turn, state → listening.
+ *
+ * SSR safety: all browser APIs are guarded with `typeof window !== 'undefined'`
+ * and accessed only in callbacks / effects, never at module initialisation.
  */
 export function useVoice({
-  sttAvailable,
-  ttsAvailable,
+  voiceAvailable,
   status,
   assistantText,
   assistantMessageId,
   onTranscript,
+  onBargeIn,
 }: UseVoiceArgs) {
   const [active, setActive] = useState(false)
   const [state, setState] = useState<VoiceState>('idle')
 
-  const vadRef = useRef<{ start: () => void; pause: () => void; destroy: () => void } | null>(null)
+  // ── STT refs ──────────────────────────────────────────────────────────────
+  const sttWsRef = useRef<WebSocket | null>(null)
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
+  const micStreamRef = useRef<MediaStream | null>(null)
+  const accumulatedRef = useRef('')
+
+  // ── TTS refs ──────────────────────────────────────────────────────────────
+  const ttsWsRef = useRef<WebSocket | null>(null)
+  const audioCtxRef = useRef<AudioContext | null>(null)
+  // FIFO queue of decoded PCM buffers waiting to play.
+  const pcmQueueRef = useRef<Float32Array[]>([])
+  const isPlayingRef = useRef(false)
+  // Keep a ref to the current playing source for barge-in stop.
+  const currentSourceRef = useRef<AudioBufferSourceNode | null>(null)
+
+  // ── Sentence streamer refs ─────────────────────────────────────────────────
   const streamerRef = useRef(createSentenceStreamer())
-  // Tracks which assistant message the streamer is currently consuming, so a new
-  // turn (voice or text) resets the streamer instead of applying a stale cursor.
   const lastAssistantIdRef = useRef<string | undefined>(undefined)
-  // Live mirror of the latest assistant message id (for use in start()).
   const assistantMessageIdRef = useRef<string | undefined>(undefined)
-  // The assistant message that already existed when voice was turned on — never
-  // spoken, so activating voice doesn't read back the prior reply.
+  // The message that was already on screen when voice was turned on — don't speak it.
   const baselineAssistantIdRef = useRef<string | undefined>(undefined)
-  const queueRef = useRef<HTMLAudioElement[]>([])
-  const playingRef = useRef(false)
-  // Strict FIFO speak pipeline: at most one /speak fetch in flight at a time.
-  const pendingSpeakRef = useRef<string[]>([]) // queued sentence texts awaiting a fetch
-  const speakingFetchRef = useRef(false) // a /speak fetch is currently running
-  const speakAbortRef = useRef<AbortController | null>(null) // the one in-flight fetch
-  const transcribeAbortRef = useRef<AbortController | null>(null)
-  // Use a stable ref so the recursive playNext call avoids the
-  // react-hooks/immutability forward-reference and render-time-ref-write rules.
-  const playNextRef = useRef<() => void>(null)
-  // Same pattern for the self-recursive pumpSpeak (finally -> pumpSpeak again).
-  const pumpSpeakRef = useRef<() => void>(null)
 
-  const playNext = useCallback(() => {
-    if (playingRef.current) return
-    const audio = queueRef.current.shift()
-    if (!audio) {
-      setState((s) => (s === 'speaking' ? 'listening' : s))
-      return
-    }
-    playingRef.current = true
-    setState('speaking')
-    const done = () => {
-      URL.revokeObjectURL(audio.src)
-      playingRef.current = false
-      // call through the ref to avoid a forward-reference in the closure
-      playNextRef.current?.()
-    }
-    audio.onended = done
-    audio.onerror = done
-    void audio.play().catch(done)
-  }, [])
-
-  // Keep the ref in sync after every render (safe; refs are write-any-time).
-  useEffect(() => {
-    playNextRef.current = playNext
-  })
-
-  // Mirror the latest assistant message id so start() can baseline it.
+  // Keep live refs in sync
   useEffect(() => {
     assistantMessageIdRef.current = assistantMessageId
   })
 
-  const clearPlayback = useCallback(() => {
-    // Barge-in / stop: cancel the in-flight fetch and drop the whole speak queue.
-    speakAbortRef.current?.abort()
-    speakAbortRef.current = null
-    speakingFetchRef.current = false
-    pendingSpeakRef.current = []
-    for (const a of queueRef.current) {
-      URL.revokeObjectURL(a.src)
-      a.pause()
-      a.removeAttribute('src')
+  // ── AudioContext FIFO playback ─────────────────────────────────────────────
+
+  /** Stable ref version of playNext to avoid recursive closure issues. */
+  const playNextRef = useRef<() => void>(() => {})
+
+  const playNext = useCallback(() => {
+    if (isPlayingRef.current) return
+    const chunk = pcmQueueRef.current.shift()
+    if (!chunk) {
+      isPlayingRef.current = false
+      setState((s) => (s === 'speaking' ? 'listening' : s))
+      return
     }
-    queueRef.current = []
-    playingRef.current = false
+    const ctx = audioCtxRef.current
+    if (!ctx) return
+
+    isPlayingRef.current = true
+    setState('speaking')
+
+    const audioBuffer = ctx.createBuffer(1, chunk.length, TTS_SAMPLE_RATE)
+    audioBuffer.getChannelData(0).set(chunk)
+    const source = ctx.createBufferSource()
+    source.buffer = audioBuffer
+    source.connect(ctx.destination)
+    source.onended = () => {
+      isPlayingRef.current = false
+      currentSourceRef.current = null
+      playNextRef.current()
+    }
+    source.start()
+    currentSourceRef.current = source
   }, [])
 
-  // Drain the FIFO speak queue one sentence at a time: exactly one /speak fetch
-  // runs at a time, so sentences are fetched (and thus queued for playback) in
-  // strict order. The finally re-pumps to process the next queued sentence.
-  const pumpSpeak = useCallback(() => {
-    if (speakingFetchRef.current || pendingSpeakRef.current.length === 0) return
-    const sentence = pendingSpeakRef.current.shift()!
-    speakingFetchRef.current = true
-    const controller = new AbortController()
-    speakAbortRef.current = controller
-    void (async () => {
-      try {
-        const res = await fetch('/api/eve/speak', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text: sentence }),
-          signal: controller.signal,
-        })
-        if (res.ok) {
-          const blob = await res.blob()
-          const blobUrl = URL.createObjectURL(blob)
-          queueRef.current.push(new Audio(blobUrl))
-          playNext()
-        }
-      } catch {
-        // aborted (barge-in) or network error: ignore, stay responsive
-      } finally {
-        speakingFetchRef.current = false
-        pumpSpeakRef.current?.()
-      }
-    })()
-  }, [playNext])
-
-  // Keep the ref in sync so the finally above can re-enter pumpSpeak.
   useEffect(() => {
-    pumpSpeakRef.current = pumpSpeak
+    playNextRef.current = playNext
   })
 
-  const enqueueSpeak = useCallback(
-    (sentence: string) => {
-      // Don't read emoji/pictographs aloud; skip if nothing speakable remains.
-      const cleaned = stripForSpeech(sentence)
-      if (!cleaned) return
-      pendingSpeakRef.current.push(cleaned)
-      pumpSpeak()
+  const enqueueAudio = useCallback(
+    (float32: Float32Array) => {
+      pcmQueueRef.current.push(float32)
+      if (!isPlayingRef.current) playNext()
     },
-    [pumpSpeak],
+    [playNext],
   )
 
-  const handleUtterance = useCallback(
-    async (pcm: Float32Array) => {
-      setState('transcribing')
-      // Abort any prior in-flight transcribe so two rapid utterances don't race.
-      transcribeAbortRef.current?.abort()
-      const controller = new AbortController()
-      transcribeAbortRef.current = controller
-      try {
-        const form = new FormData()
-        form.append('file', encodeWav(pcm, 16000), 'utterance.wav')
-        const res = await fetch('/api/eve/transcribe', {
-          method: 'POST',
-          body: form,
-          signal: controller.signal,
-        })
-        if (!res.ok) {
-          toast.error('Transcription failed')
-          setState('listening')
-          return
+  // ── Clear TTS playback (barge-in or stop) ─────────────────────────────────
+
+  const clearPlayback = useCallback(() => {
+    try {
+      currentSourceRef.current?.stop()
+    } catch {
+      // ignore "already stopped"
+    }
+    currentSourceRef.current = null
+    isPlayingRef.current = false
+    pcmQueueRef.current = []
+    // Tell Deepgram TTS to discard its buffer.
+    if (ttsWsRef.current?.readyState === WebSocket.OPEN) {
+      ttsWsRef.current.send(JSON.stringify({ type: 'Clear' }))
+    }
+  }, [])
+
+  // ── TTS WebSocket ──────────────────────────────────────────────────────────
+
+  const openTtsWs = useCallback(
+    async (token: string) => {
+      const ws = new WebSocket(DG_TTS_URL, ['bearer', token])
+      ws.binaryType = 'arraybuffer'
+      ttsWsRef.current = ws
+
+      ws.onmessage = (ev) => {
+        if (ev.data instanceof ArrayBuffer) {
+          // Raw linear16 PCM — decode and queue for playback.
+          if (ev.data.byteLength === 0) return
+          const float32 = decodeLinear16(ev.data)
+          enqueueAudio(float32)
         }
-        const { text } = (await res.json()) as { text: string }
-        if (text.trim()) {
-          setState('thinking')
-          // Streamer reset is handled by the assistant-message-id change in the
-          // push effect below (covers both voice and text-typed turns).
-          onTranscript(text)
-        } else {
-          setState('listening')
-        }
-      } catch {
-        setState('listening')
+        // Text messages: Flushed / Cleared / Metadata — no action needed.
       }
+
+      ws.onerror = () => {
+        // Non-fatal: TTS WebSocket error — voice continues but Eve won't be heard.
+        toast.error("Voice: TTS connection error — Eve's replies won't be spoken.")
+      }
+
+      // Wait for open before caller sends text.
+      await new Promise<void>((resolve, reject) => {
+        ws.onopen = () => resolve()
+        ws.onerror = () => reject(new Error('TTS WS failed to open'))
+      })
     },
-    [onTranscript],
+    [enqueueAudio],
   )
 
-  // Speak only the <speak> summary as it streams (when TTS attached). Until that
-  // block appears we stay silent — the detailed reply streams to the chat but is
-  // not voiced.
+  // ── Sentence streaming → TTS ───────────────────────────────────────────────
+
+  const sendSentenceToTts = useCallback((sentence: string) => {
+    const cleaned = stripForSpeech(sentence)
+    if (!cleaned) return
+    const ws = ttsWsRef.current
+    if (!ws || ws.readyState !== WebSocket.OPEN) return
+    ws.send(JSON.stringify({ type: 'Text', text: cleaned }))
+    ws.send(JSON.stringify({ type: 'Flush' }))
+  }, [])
+
+  // ── React to streaming assistant text → TTS ────────────────────────────────
+
   useEffect(() => {
-    if (!active || !ttsAvailable || !assistantText) return
-    // Never speak the reply that already existed when voice was turned on.
+    if (!active) return
+    if (!assistantText) return
     if (assistantMessageId === baselineAssistantIdRef.current) return
-    // A new assistant turn (id change) means the streamer's consumed cursor is
-    // stale for this different string — reset before pushing the new text.
+
     if (assistantMessageId !== lastAssistantIdRef.current) {
       streamerRef.current = createSentenceStreamer()
       lastAssistantIdRef.current = assistantMessageId
     }
     const speakable = extractSpeak(assistantText)
     if (speakable !== null) {
-      for (const sentence of streamerRef.current.push(speakable)) enqueueSpeak(sentence)
+      for (const sentence of streamerRef.current.push(speakable)) {
+        sendSentenceToTts(sentence)
+      }
     }
-  }, [assistantText, assistantMessageId, active, ttsAvailable, enqueueSpeak])
+  }, [assistantText, assistantMessageId, active, sendSentenceToTts])
 
-  // When the stream finishes, flush the trailing spoken sentence. If the model
-  // produced no <speak> block, fall back to speaking the whole reply so voice is
-  // never silent.
+  // When agent stream finishes, flush remaining buffered sentence.
   useEffect(() => {
-    if (!active || !ttsAvailable) return
-    // Never speak the reply that already existed when voice was turned on.
+    if (!active) return
     if (assistantMessageId === baselineAssistantIdRef.current) return
     if (status === 'streaming' || status === 'submitted') return
+
     const text = assistantText ?? ''
     if (extractSpeak(text) !== null) {
-      for (const sentence of streamerRef.current.flush()) enqueueSpeak(sentence)
+      for (const sentence of streamerRef.current.flush()) sendSentenceToTts(sentence)
     } else if (text.trim()) {
-      for (const sentence of streamerRef.current.push(text)) enqueueSpeak(sentence)
-      for (const sentence of streamerRef.current.flush()) enqueueSpeak(sentence)
+      // No <speak> block — fall back to speaking the whole reply so voice isn't silent.
+      for (const sentence of streamerRef.current.push(text)) sendSentenceToTts(sentence)
+      for (const sentence of streamerRef.current.flush()) sendSentenceToTts(sentence)
     }
-  }, [status, assistantText, assistantMessageId, active, ttsAvailable, enqueueSpeak])
+  }, [status, assistantText, assistantMessageId, active, sendSentenceToTts])
+
+  // ── start() ────────────────────────────────────────────────────────────────
 
   const start = useCallback(async () => {
-    // Guard: a hands-free loop needs speech input.
-    if (!sttAvailable) {
-      toast.error('No speech-to-text service is attached.')
+    if (typeof window === 'undefined') return
+    if (!voiceAvailable) {
+      toast.error('Voice not configured (DEEPGRAM_API_KEY missing).')
       return
     }
-    if (!ttsAvailable) {
-      toast.info("No text-to-speech attached — Eve's replies won't be spoken.")
-    }
-    // Baseline the reply that's already on screen so turning voice on doesn't
-    // read it back; only turns that arrive after this point are spoken.
+
+    // Baseline: don't speak the message already on screen.
     baselineAssistantIdRef.current = assistantMessageIdRef.current
+
+    let stream: MediaStream
     try {
-      const { MicVAD } = await import('@ricky0123/vad-web')
-      const vad = await MicVAD.new({
-        baseAssetPath: VAD_ASSET_BASE,
-        onnxWASMBasePath: ORT_WASM_BASE,
-        onSpeechStart: () => {
-          clearPlayback() // barge-in: stop Eve talking
-          setState('listening')
-        },
-        onSpeechEnd: (audio: Float32Array) => {
-          void handleUtterance(audio)
-        },
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true },
+        video: false,
       })
-      vad.start()
-      vadRef.current = vad
-      setActive(true)
-      setState('listening')
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Microphone unavailable')
-      setActive(false)
-      setState('idle')
+      return
     }
-  }, [sttAvailable, ttsAvailable, clearPlayback, handleUtterance])
+    micStreamRef.current = stream
+
+    // Fetch tokens for both WS connections upfront (two separate 30 s tokens).
+    let sttToken: string
+    let ttsToken: string
+    try {
+      ;[sttToken, ttsToken] = await Promise.all([fetchDeepgramToken(), fetchDeepgramToken()])
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not start voice')
+      stream.getTracks().forEach((t) => t.stop())
+      return
+    }
+
+    // Create a fresh AudioContext for this session.
+    audioCtxRef.current = new AudioContext({ sampleRate: TTS_SAMPLE_RATE })
+
+    // Open TTS WS.
+    try {
+      await openTtsWs(ttsToken)
+    } catch {
+      toast.error("Voice: TTS connection failed — Eve's replies won't be spoken.")
+      // Continue: STT still works.
+    }
+
+    // Open STT WebSocket.
+    // Subprotocol: ['bearer', token] for short-lived access tokens (not 'token' for raw keys).
+    const sttWs = new WebSocket(DG_STT_URL, ['bearer', sttToken])
+    sttWs.binaryType = 'arraybuffer'
+    sttWsRef.current = sttWs
+
+    sttWs.onmessage = (ev) => {
+      if (typeof ev.data !== 'string') return
+      let msg: Record<string, unknown>
+      try {
+        msg = JSON.parse(ev.data) as Record<string, unknown>
+      } catch {
+        return
+      }
+
+      const msgType = msg['type'] as string | undefined
+
+      if (msgType === 'Results') {
+        const channel = msg['channel'] as Record<string, unknown> | undefined
+        const alts = channel?.['alternatives'] as Array<{ transcript: string }> | undefined
+        const transcript = alts?.[0]?.transcript ?? ''
+        const isFinal = msg['is_final'] as boolean | undefined
+        const speechFinal = msg['speech_final'] as boolean | undefined
+
+        if (isFinal && transcript) {
+          accumulatedRef.current += transcript + ' '
+        }
+        if (speechFinal) {
+          const text = accumulatedRef.current.trim()
+          accumulatedRef.current = ''
+          if (text) {
+            setState('thinking')
+            onTranscript(text)
+          }
+        }
+      } else if (msgType === 'UtteranceEnd') {
+        // Backstop: submit accumulated text if speech_final never fired.
+        const text = accumulatedRef.current.trim()
+        accumulatedRef.current = ''
+        if (text) {
+          setState('thinking')
+          onTranscript(text)
+        }
+      } else if (msgType === 'SpeechStarted') {
+        // Barge-in: user started speaking while Eve was talking.
+        if (isPlayingRef.current) {
+          clearPlayback()
+          onBargeIn?.()
+          setState('listening')
+        }
+      }
+    }
+
+    sttWs.onerror = () => {
+      toast.error('Voice: STT connection error.')
+    }
+
+    sttWs.onclose = () => {
+      // If still active (i.e. not stopped by user) — surface the disconnect.
+      if (active) {
+        toast.error('Voice: STT disconnected.')
+      }
+    }
+
+    // Wait for STT WS to open before starting the MediaRecorder.
+    await new Promise<void>((resolve) => {
+      if (sttWs.readyState === WebSocket.OPEN) {
+        resolve()
+      } else {
+        sttWs.addEventListener('open', () => resolve(), { once: true })
+      }
+    })
+
+    // Start MediaRecorder — sends webm/opus blobs (no encoding/sample_rate params needed).
+    const recorder = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' })
+    mediaRecorderRef.current = recorder
+
+    recorder.ondataavailable = (ev) => {
+      if (ev.data.size > 0 && sttWs.readyState === WebSocket.OPEN) {
+        sttWs.send(ev.data)
+      }
+    }
+    recorder.start(250) // 250 ms chunks
+
+    setActive(true)
+    setState('listening')
+  }, [voiceAvailable, openTtsWs, clearPlayback, onTranscript, onBargeIn, active])
+
+  // ── stop() ─────────────────────────────────────────────────────────────────
 
   const stop = useCallback(() => {
-    vadRef.current?.pause()
-    vadRef.current?.destroy()
-    vadRef.current = null
-    transcribeAbortRef.current?.abort()
+    // Stop MediaRecorder and mic tracks.
+    try {
+      mediaRecorderRef.current?.stop()
+    } catch {
+      // ignore
+    }
+    mediaRecorderRef.current = null
+    micStreamRef.current?.getTracks().forEach((t) => t.stop())
+    micStreamRef.current = null
+
+    // Close STT WebSocket.
+    sttWsRef.current?.close()
+    sttWsRef.current = null
+
+    // Clear TTS playback and close TTS WebSocket.
     clearPlayback()
+    try {
+      ttsWsRef.current?.close()
+    } catch {
+      // ignore
+    }
+    ttsWsRef.current = null
+
+    // Close AudioContext.
+    void audioCtxRef.current?.close().catch(() => {})
+    audioCtxRef.current = null
+
+    // Reset streamer and accumulated transcript.
+    accumulatedRef.current = ''
+    streamerRef.current = createSentenceStreamer()
+    lastAssistantIdRef.current = undefined
+
     setActive(false)
     setState('idle')
   }, [clearPlayback])
 
+  const toggle = useCallback(() => {
+    if (active) {
+      stop()
+    } else {
+      void start()
+    }
+  }, [active, start, stop])
+
   // Tear everything down on unmount.
   useEffect(() => () => stop(), [stop])
 
-  return { active, state, start, stop }
+  return { active, state, start, stop, toggle }
 }

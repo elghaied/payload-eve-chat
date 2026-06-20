@@ -1,7 +1,0 @@
-use_default_settings: true
-server:
-  secret_key: "${SEARXNG_SECRET:-please-change-this-local-secret}"
-search:
-  formats:
-    - html
-    - json

@@ -22,6 +22,7 @@ import {
 } from '@/components/ai-elements/prompt-input'
 import { Tool, ToolContent, ToolHeader, ToolInput, ToolOutput } from '@/components/ai-elements/tool'
 import { Reasoning } from '@/components/ai-elements/reasoning'
+import { TooltipProvider } from '@/components/ui/tooltip'
 import { ConversationSidebar, type ConversationSummary } from './ConversationSidebar'
 import { PostPreviewPanel } from './PostPreviewPanel'
 import { findOpenableDraft } from './proposeDraft'
@@ -375,6 +376,7 @@ const EveChatInner: React.FC<EveChatProps & { initialEvents: unknown[]; voiceAva
   }, [])
 
   return (
+    <TooltipProvider>
     <div className="eve-scope flex h-[calc(100dvh-var(--app-header-height,48px))] min-h-[600px]">
       <ConversationSidebar
         conversations={sidebarConversations}
@@ -491,5 +493,6 @@ const EveChatInner: React.FC<EveChatProps & { initialEvents: unknown[]; voiceAva
         />
       )}
     </div>
+    </TooltipProvider>
   )
 }

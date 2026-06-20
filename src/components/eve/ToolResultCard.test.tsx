@@ -57,10 +57,53 @@ describe('ToolResultCard', () => {
     expect(screen.getByText('boom')).toBeTruthy()
   })
 
-  it('puts unknown structured output behind a details toggle (not a bare dump)', () => {
+  it('renders unknown structured output as a clean done line — never raw JSON', () => {
     const { container } = render(
       <ToolResultCard part={part({ state: 'output-available', toolName: 'mystery', output: { a: 1 } })} />,
     )
-    expect(container.querySelector('details')).toBeTruthy()
+    // No JSON dump anywhere.
+    expect(container.querySelector('pre')).toBeNull()
+    expect(container.textContent).not.toContain('{')
+    expect(screen.getByText(/completed/)).toBeTruthy()
+  })
+
+  it('renders connection_search discovery as a summary, not a schema dump', () => {
+    const { container } = render(
+      <ToolResultCard
+        part={part({
+          state: 'output-available',
+          toolName: 'connection__search',
+          toolMetadata: { eve: { kind: 'tool-call', name: 'connection__search' } },
+          output: [
+            { connection: 'payload-mcp', tool: 'createDocument', description: 'Create a document' },
+          ],
+        })}
+      />,
+    )
+    expect(container.querySelector('pre')).toBeNull()
+    expect(container.textContent).not.toContain('inputSchema')
+    expect(screen.getByText(/Found 1 tool/)).toBeTruthy()
+  })
+
+  it('renders the todo list as a checklist, not raw JSON', () => {
+    const { container } = render(
+      <ToolResultCard
+        part={part({
+          state: 'output-available',
+          toolName: 'todo',
+          toolMetadata: { eve: { kind: 'tool-call', name: 'todo' } },
+          output: {
+            counts: { cancelled: 0, completed: 1, in_progress: 0, pending: 1, total: 2 },
+            todos: [
+              { content: 'Outline the article', status: 'completed', priority: 'high' },
+              { content: 'Write the draft', status: 'pending', priority: 'medium' },
+            ],
+          },
+        })}
+      />,
+    )
+    expect(container.querySelector('pre')).toBeNull()
+    expect(screen.getByText('Outline the article')).toBeTruthy()
+    expect(screen.getByText('Write the draft')).toBeTruthy()
   })
 })

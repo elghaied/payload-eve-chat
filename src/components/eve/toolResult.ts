@@ -6,17 +6,40 @@ import type { EveDynamicToolPart } from 'eve/react'
 
 export type WebSearchItem = { url: string; title: string; pageAge: string | null }
 export type AdminRecord = { id: string; label: string; href?: string }
+export type TodoStatus = 'pending' | 'in_progress' | 'completed' | 'cancelled'
+export type TodoItem = { content: string; status: TodoStatus; priority?: string }
 
 export type ToolResultView =
   | { kind: 'web_search'; answer?: string; results: WebSearchItem[] }
   | { kind: 'web_fetch'; url: string; truncated: boolean; preview: string }
   | { kind: 'records'; verb: 'Created' | 'Updated' | 'Found'; collection?: string; records: AdminRecord[]; total?: number }
+  | { kind: 'discovery'; connection?: string; tools: string[]; count: number }
+  | { kind: 'todos'; todos: TodoItem[]; total: number; completed: number }
   | { kind: 'text'; text: string }
-  | { kind: 'json'; text?: string; json: string }
+  // Last-resort fallback: a clean "✓ <tool>" line — NEVER a raw-JSON dump.
+  | { kind: 'done'; tool: string }
 
 type AnyRecord = Record<string, unknown>
 
 const isObj = (v: unknown): v is AnyRecord => typeof v === 'object' && v !== null
+
+/**
+ * Eve qualifies connection (MCP) tools as `connection__<conn>__<tool>` and its built-in
+ * discovery tool as `connection__search`. Strip the prefix to the bare tool name so
+ * matching + labels read `createDocument` / `search`, not `connection payload mcp create…`.
+ */
+export function bareToolName(name: string): string {
+  const m = name.match(/^connection__(?:.+__)?(.+)$/)
+  return m ? m[1]! : name
+}
+
+const TODO_STATUSES: TodoStatus[] = ['pending', 'in_progress', 'completed', 'cancelled']
+const asTodoStatus = (v: unknown): TodoStatus =>
+  typeof v === 'string' && (TODO_STATUSES as string[]).includes(v) ? (v as TodoStatus) : 'pending'
+
+/** A connection_search result item: { connection, description, tool?, ... }. */
+const isDiscoveryItem = (v: unknown): v is AnyRecord =>
+  isObj(v) && typeof v['connection'] === 'string' && typeof v['description'] === 'string'
 
 /** Best-effort hostname for display. */
 export function hostOf(url: string): string {
@@ -101,7 +124,42 @@ function mcpText(output: AnyRecord): string | undefined {
 export function describeToolResult(part: EveDynamicToolPart): ToolResultView | null {
   if (part.state !== 'output-available') return null
   const output = part.output
-  const name = part.toolMetadata?.eve?.name ?? part.toolName
+  const rawName = part.toolMetadata?.eve?.name ?? part.toolName
+  const name = bareToolName(rawName)
+
+  // connection_search — Eve's built-in tool discovery. Output is an array of
+  // { connection, description, tool?, inputSchema? }. Show a quiet "found N tools"
+  // summary, NEVER the raw schema dump.
+  if (
+    rawName === 'connection_search' ||
+    rawName === 'connection__search' ||
+    (Array.isArray(output) && output.length > 0 && output.every(isDiscoveryItem))
+  ) {
+    const items = Array.isArray(output) ? output.filter(isDiscoveryItem) : []
+    const tools = items
+      .map((it) => (typeof it['tool'] === 'string' ? (it['tool'] as string) : ''))
+      .filter((t) => t.length > 0)
+    const connection = items.find((it) => typeof it['connection'] === 'string')?.['connection'] as
+      | string
+      | undefined
+    return { kind: 'discovery', connection, tools, count: items.length }
+  }
+
+  // todo — Eve's durable per-session checklist. Output is { counts, todos:[{content,status,priority}] }.
+  if (name === 'todo' && isObj(output) && Array.isArray(output['todos'])) {
+    const todos: TodoItem[] = (output['todos'] as unknown[]).filter(isObj).map((t) => ({
+      content: typeof t['content'] === 'string' ? (t['content'] as string) : '',
+      status: asTodoStatus(t['status']),
+      priority: typeof t['priority'] === 'string' ? (t['priority'] as string) : undefined,
+    }))
+    const counts = isObj(output['counts']) ? (output['counts'] as AnyRecord) : {}
+    const total = typeof counts['total'] === 'number' ? (counts['total'] as number) : todos.length
+    const completed =
+      typeof counts['completed'] === 'number'
+        ? (counts['completed'] as number)
+        : todos.filter((t) => t.status === 'completed').length
+    return { kind: 'todos', todos, total, completed }
+  }
 
   // web_search — our gateway tool returns { answer, sources } | { error }.
   // (Also handle the Anthropic-native array shape as a fallback.)
@@ -158,23 +216,20 @@ export function describeToolResult(part: EveDynamicToolPart): ToolResultView | n
     if (text) return { kind: 'text', text }
   }
 
-  // Fallback: plain string output, or unknown structured output → readable + raw behind a toggle.
+  // Fallback: plain string output renders as text; anything else becomes a clean
+  // "✓ <tool>" line. We deliberately never dump raw JSON into the chat.
   if (typeof output === 'string') return { kind: 'text', text: output }
-  return { kind: 'json', json: safeJson(output) }
-}
-
-function safeJson(v: unknown): string {
-  try {
-    return JSON.stringify(v, null, 2)
-  } catch {
-    return String(v)
-  }
+  return { kind: 'done', tool: name }
 }
 
 /** A short label describing what a running tool is doing (for the in-progress state). */
 export function runningLabel(part: EveDynamicToolPart): string {
-  const name = part.toolMetadata?.eve?.name ?? part.toolName
+  const rawName = part.toolMetadata?.eve?.name ?? part.toolName
+  const name = bareToolName(rawName)
   const input = part.input
+  if (rawName === 'connection_search' || rawName === 'connection__search')
+    return 'Finding available tools…'
+  if (name === 'todo') return 'Updating the plan…'
   if (name === 'web_search') return 'Searching the web…'
   if (name === 'web_fetch') {
     const url = isObj(input) && typeof input['url'] === 'string' ? hostOf(input['url']) : ''

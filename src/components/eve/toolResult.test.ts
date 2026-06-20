@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { EveDynamicToolPart } from 'eve/react'
 import {
   adminHref,
+  bareToolName,
   collectionSlugOf,
   describeToolResult,
   hostOf,
@@ -27,6 +28,11 @@ describe('helpers', () => {
     expect(adminHref('tasks', '123')).toBe('/admin/collections/tasks/123')
     expect(adminHref(undefined, '1')).toBeUndefined()
     expect(adminHref('tasks', undefined)).toBeUndefined()
+  })
+  it('bareToolName strips the connection__<conn>__ prefix', () => {
+    expect(bareToolName('connection__payload-mcp__createDocument')).toBe('createDocument')
+    expect(bareToolName('connection__search')).toBe('search')
+    expect(bareToolName('web_search')).toBe('web_search')
   })
 })
 
@@ -137,6 +143,69 @@ describe('describeToolResult', () => {
     }
   })
 
+  it('parses a name-qualified MCP create (connection__<conn>__createDocument)', () => {
+    const v = describeToolResult(
+      part({
+        state: 'output-available',
+        toolName: 'connection__payload-mcp__createDocument',
+        toolMetadata: { eve: { kind: 'tool-call', name: 'connection__payload-mcp__createDocument' } },
+        input: { collectionSlug: 'posts', data: { title: 'My Article' } },
+        output: { content: [{ type: 'text', text: 'created' }], doc: { id: 'p1', title: 'My Article', status: 'draft' } },
+      }),
+    )
+    expect(v?.kind).toBe('records')
+    if (v?.kind === 'records') {
+      expect(v.verb).toBe('Created')
+      expect(v.records[0]).toMatchObject({ label: 'My Article', href: '/admin/collections/posts/p1' })
+    }
+  })
+
+  it('renders connection_search discovery as a tool summary, not JSON', () => {
+    const v = describeToolResult(
+      part({
+        state: 'output-available',
+        toolName: 'connection__search',
+        toolMetadata: { eve: { kind: 'tool-call', name: 'connection__search' } },
+        input: { keywords: 'create post' },
+        output: [
+          { connection: 'payload-mcp', tool: 'createDocument', description: 'Create a document', inputSchema: { type: 'object' } },
+          { connection: 'payload-mcp', tool: 'findDocuments', description: 'Find documents', inputSchema: { type: 'object' } },
+        ],
+      }),
+    )
+    expect(v?.kind).toBe('discovery')
+    if (v?.kind === 'discovery') {
+      expect(v.count).toBe(2)
+      expect(v.connection).toBe('payload-mcp')
+      expect(v.tools).toEqual(['createDocument', 'findDocuments'])
+    }
+  })
+
+  it('renders the todo list as a checklist view', () => {
+    const v = describeToolResult(
+      part({
+        state: 'output-available',
+        toolName: 'todo',
+        toolMetadata: { eve: { kind: 'tool-call', name: 'todo' } },
+        input: {},
+        output: {
+          counts: { cancelled: 0, completed: 1, in_progress: 1, pending: 1, total: 3 },
+          todos: [
+            { content: 'Outline', status: 'completed', priority: 'high' },
+            { content: 'Draft', status: 'in_progress', priority: 'medium' },
+            { content: 'Review', status: 'pending', priority: 'low' },
+          ],
+        },
+      }),
+    )
+    expect(v?.kind).toBe('todos')
+    if (v?.kind === 'todos') {
+      expect(v.total).toBe(3)
+      expect(v.completed).toBe(1)
+      expect(v.todos.map((t) => t.status)).toEqual(['completed', 'in_progress', 'pending'])
+    }
+  })
+
   it('falls back to text for an MCP result with no doc', () => {
     const v = describeToolResult(
       part({ state: 'output-available', toolName: 'findDocuments', input: {}, output: { content: [{ type: 'text', text: 'Not found' }] } }),
@@ -144,10 +213,9 @@ describe('describeToolResult', () => {
     expect(v).toMatchObject({ kind: 'text', text: 'Not found' })
   })
 
-  it('falls back to json for unknown structured output', () => {
+  it('falls back to a clean done line (never raw JSON) for unknown structured output', () => {
     const v = describeToolResult(part({ state: 'output-available', toolName: 'mystery', input: {}, output: { foo: 1 } }))
-    expect(v?.kind).toBe('json')
-    if (v?.kind === 'json') expect(v.json).toContain('"foo": 1')
+    expect(v).toMatchObject({ kind: 'done', tool: 'mystery' })
   })
 })
 

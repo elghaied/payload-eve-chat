@@ -4,19 +4,31 @@ import {
   AlertTriangleIcon,
   BanIcon,
   CheckCircle2Icon,
+  CircleIcon,
   ExternalLinkIcon,
   GlobeIcon,
   LinkIcon,
+  ListChecksIcon,
+  LoaderCircleIcon,
   PencilIcon,
+  PlugIcon,
   PlusIcon,
   SearchIcon,
+  XCircleIcon,
 } from 'lucide-react'
 import type { ReactNode } from 'react'
 import type { EveDynamicToolPart } from 'eve/react'
 import { MessageResponse } from '@/components/ai-elements/message'
 import { Spinner } from '@/components/ui/spinner'
 import { humanizeToolName } from './inputRequest'
-import { describeToolResult, hostOf, runningLabel, type ToolResultView } from './toolResult'
+import {
+  bareToolName,
+  describeToolResult,
+  hostOf,
+  runningLabel,
+  type TodoStatus,
+  type ToolResultView,
+} from './toolResult'
 
 function Shell({ icon, children }: { icon: ReactNode; children: ReactNode }) {
   return (
@@ -136,17 +148,70 @@ function ResultBody({ view }: { view: ToolResultView }) {
     )
   }
 
+  if (view.kind === 'discovery') {
+    const names = view.tools.map((t) => humanizeToolName(bareToolName(t)))
+    return (
+      <div>
+        <div className="font-medium">
+          Found {view.count} {view.count === 1 ? 'tool' : 'tools'}
+          {view.connection ? ` in ${view.connection}` : ''}
+        </div>
+        {names.length > 0 && (
+          <p className="truncate text-muted-foreground text-xs">{names.join(', ')}</p>
+        )}
+      </div>
+    )
+  }
+
+  if (view.kind === 'todos') {
+    return (
+      <div>
+        <div className="mb-1.5 font-medium">
+          Plan{' '}
+          <span className="font-normal text-muted-foreground text-xs">
+            ({view.completed}/{view.total})
+          </span>
+        </div>
+        <ul className="space-y-1">
+          {view.todos.map((t, i) => {
+            const done = t.status === 'completed' || t.status === 'cancelled'
+            return (
+              <li key={i} className="flex items-start gap-2">
+                <span className="mt-0.5 shrink-0">
+                  <TodoStatusIcon status={t.status} />
+                </span>
+                <span
+                  className={
+                    done ? 'text-muted-foreground line-through' : 'text-foreground'
+                  }
+                >
+                  {t.content}
+                </span>
+              </li>
+            )
+          })}
+        </ul>
+      </div>
+    )
+  }
+
   if (view.kind === 'text') {
     return <p className="whitespace-pre-wrap text-muted-foreground">{view.text}</p>
   }
 
-  // Unknown structured output — readable, raw JSON behind a toggle (never a bare dump).
+  // Last-resort: a clean done line — we never dump raw JSON into the chat.
   return (
-    <details>
-      <summary className="cursor-pointer text-muted-foreground">Tool result (details)</summary>
-      <pre className="mt-1 max-h-64 overflow-auto rounded bg-muted/50 p-2 text-xs">{view.json}</pre>
-    </details>
+    <span className="text-muted-foreground">{humanizeToolName(view.tool)} completed</span>
   )
+}
+
+function TodoStatusIcon({ status }: { status: TodoStatus }) {
+  if (status === 'completed')
+    return <CheckCircle2Icon className="size-4 text-green-600" />
+  if (status === 'cancelled') return <XCircleIcon className="size-4 text-muted-foreground" />
+  if (status === 'in_progress')
+    return <LoaderCircleIcon className="size-4 animate-spin text-blue-600" />
+  return <CircleIcon className="size-4 text-muted-foreground" />
 }
 
 function iconFor(view: ToolResultView): ReactNode {
@@ -155,6 +220,10 @@ function iconFor(view: ToolResultView): ReactNode {
       return <SearchIcon className="size-4" />
     case 'web_fetch':
       return <GlobeIcon className="size-4" />
+    case 'discovery':
+      return <PlugIcon className="size-4" />
+    case 'todos':
+      return <ListChecksIcon className="size-4" />
     case 'records':
       return view.verb === 'Created' ? (
         <PlusIcon className="size-4 text-green-600" />
@@ -174,7 +243,7 @@ function iconFor(view: ToolResultView): ReactNode {
  * running / error / denied states too. HITL (approval-requested) is handled upstream.
  */
 export function ToolResultCard({ part }: { part: EveDynamicToolPart }) {
-  const label = humanizeToolName(part.toolMetadata?.eve?.name ?? part.toolName)
+  const label = humanizeToolName(bareToolName(part.toolMetadata?.eve?.name ?? part.toolName))
 
   if (part.state === 'input-streaming' || part.state === 'input-available') {
     return (

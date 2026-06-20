@@ -7,8 +7,13 @@ import config from '@payload-config'
  * anonymous and MCP-API-key principals are rejected).
  */
 export async function authenticateAdmin(headers: Headers): Promise<{ id: string } | null> {
-  const payload = await getPayload({ config })
-  const { user } = await payload.auth({ headers })
-  if (!user || user.collection !== 'users') return null
-  return { id: String(user.id) }
+  try {
+    const payload = await getPayload({ config })
+    const { user } = await payload.auth({ headers })
+    if (!user || user.collection !== 'users') return null
+    return { id: String(user.id) }
+  } catch (err) {
+    console.error('[authenticateAdmin] auth error — failing closed', err instanceof Error ? err.message : err)
+    return null
+  }
 }

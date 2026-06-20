@@ -1,12 +1,21 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-const authMock = vi.fn()
-vi.mock('payload', () => ({ getPayload: async () => ({ auth: authMock }) }))
+const { authMock, getPayloadMock } = vi.hoisted(() => {
+  const authMock = vi.fn()
+  const getPayloadMock = vi.fn()
+  return { authMock, getPayloadMock }
+})
+
+vi.mock('payload', () => ({ getPayload: getPayloadMock }))
 vi.mock('@payload-config', () => ({ default: {} }))
 
 import { authenticateAdmin } from './auth'
 
-beforeEach(() => authMock.mockReset())
+beforeEach(() => {
+  authMock.mockReset()
+  getPayloadMock.mockReset()
+  getPayloadMock.mockResolvedValue({ auth: authMock })
+})
 
 describe('authenticateAdmin', () => {
   it('accepts a users-collection user', async () => {
@@ -20,5 +29,13 @@ describe('authenticateAdmin', () => {
   it('rejects an API-key principal', async () => {
     authMock.mockResolvedValue({ user: { id: 'k1', collection: 'payload-mcp-api-keys' } })
     expect(await authenticateAdmin(new Headers())).toBeNull()
+  })
+  it('returns null (fails closed) when payload.auth throws', async () => {
+    authMock.mockImplementation(async () => { throw new Error('db down') })
+    expect(await authenticateAdmin(new Headers())).toBeNull()
+  })
+  it('coerces a numeric user.id to string', async () => {
+    authMock.mockResolvedValue({ user: { id: 42, collection: 'users' } })
+    expect(await authenticateAdmin(new Headers())).toEqual({ id: '42' })
   })
 })

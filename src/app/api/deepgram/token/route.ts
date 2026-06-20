@@ -39,7 +39,26 @@ export async function POST(req: Request): Promise<Response> {
   }
 
   if (!res.ok) {
-    payload.logger.error({ msg: `Deepgram /v1/auth/grant returned ${res.status}` })
+    let detail = ''
+    try {
+      const e = (await res.json()) as { err_code?: string; err_msg?: string }
+      detail = e?.err_msg || e?.err_code || ''
+    } catch {
+      // non-JSON error body — ignore
+    }
+    payload.logger.error({ msg: `Deepgram /v1/auth/grant returned ${res.status}`, detail })
+    // 403 "Insufficient permissions" = the key lacks the Member role needed to grant tokens.
+    if (res.status === 403) {
+      return Response.json(
+        {
+          error:
+            'Your Deepgram API key lacks token-grant permission. In the Deepgram Console → ' +
+            'API Keys, create a key with the "Member" role (or higher) and set it as ' +
+            'DEEPGRAM_API_KEY.',
+        },
+        { status: 502 },
+      )
+    }
     return Response.json({ error: 'Voice service error' }, { status: 502 })
   }
 

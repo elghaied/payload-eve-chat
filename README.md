@@ -18,11 +18,14 @@ search) so it deploys to Vercel with no Docker/self-hosted dependencies.
 - **Post preview (approve-before-create)** — when you ask Eve to write a post, it calls
   `propose_post` and shows an **editable** preview panel; the post is only created via
   `createDocumentFromMarkdown` after you review/edit and approve.
-- **Web search + read-URL** — Eve's built-in `web_search` (Vercel AI Gateway) and `web_fetch`
-  (fetch any URL as Markdown). No SearXNG, no extra keys.
+- **Web search + read-URL** — `web_search` (a Perplexity Sonar model via the AI Gateway you
+  already configured — override with `WEB_SEARCH_MODEL`) and the built-in `web_fetch` (fetch any
+  URL as Markdown). No SearXNG, no extra key.
 - **Hands-free voice** — streaming speech-to-text and text-to-speech via **Deepgram** (Nova-3 STT
   + Aura-2 TTS) with end-of-utterance detection and barge-in. The mic button appears when
-  `DEEPGRAM_API_KEY` is configured.
+  `DEEPGRAM_API_KEY` is configured. The key must have the **Member** role (or higher) — the
+  browser uses short-lived tokens from `/api/deepgram/token`, and `/v1/auth/grant` returns
+  `403 Insufficient permissions` for lower-scoped keys.
 - **Code-exec disabled by design** — Eve's default sandbox tools (`bash`/`read_file`/`write_file`/
   `glob`/`grep`) are turned off; the agent operates only on Payload data over MCP.
 

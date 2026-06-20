@@ -107,6 +107,27 @@ describe('POST /api/deepgram/token', () => {
     expect(JSON.stringify(body)).not.toContain('test-api-key')
   })
 
+  it('returns an actionable message on a 403 Insufficient permissions', async () => {
+    authMock.mockResolvedValue({ user: fakeUser })
+    process.env.DEEPGRAM_API_KEY = 'test-api-key'
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({ err_code: 'FORBIDDEN', err_msg: 'Insufficient permissions.' }),
+          { status: 403 },
+        ),
+      ),
+    )
+
+    const res = await POST(makeRequest())
+    expect(res.status).toBe(502)
+    const body = await res.json()
+    expect(body.error).toMatch(/Member/)
+    expect(JSON.stringify(body)).not.toContain('test-api-key')
+  })
+
   it('returns 502 when fetch throws (network error)', async () => {
     authMock.mockResolvedValue({ user: fakeUser })
     process.env.DEEPGRAM_API_KEY = 'test-api-key'

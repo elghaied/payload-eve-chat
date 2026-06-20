@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from '@payloadcms/ui'
 import type { UseEveAgentStatus } from 'eve/react'
 import { createSentenceStreamer } from './sentenceStreamer'
-import { extractSpeak, stripForSpeech } from './speakable'
+import { extractSpeak, firstSentences, stripForSpeech } from './speakable'
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
@@ -219,6 +219,8 @@ export function useVoice({
   }, [])
 
   // ── Speak the reply to a voice turn as it streams ───────────────────────────
+  // Speak ONLY the <speak>…</speak> summary (Eve wraps a short spoken version). The full reply
+  // is still shown in the chat; only the wrapped part is read aloud.
   useEffect(() => {
     if (!speakReplyRef.current || !assistantText) return
     if (assistantMessageId === baselineAssistantIdRef.current) return
@@ -226,17 +228,32 @@ export function useVoice({
       streamerRef.current = createSentenceStreamer()
       lastAssistantIdRef.current = assistantMessageId
     }
-    const spoken = extractSpeak(assistantText) ?? assistantText
-    for (const s of streamerRef.current.push(spoken)) speak(s)
+    const spoken = extractSpeak(assistantText)
+    if (spoken !== null) {
+      for (const s of streamerRef.current.push(spoken)) speak(s)
+    }
   }, [assistantText, assistantMessageId, speak])
 
   useEffect(() => {
     if (!speakReplyRef.current) return
     if (assistantMessageId === baselineAssistantIdRef.current) return
     if (status === 'streaming' || status === 'submitted') return
-    for (const s of streamerRef.current.flush()) speak(s)
+    const text = assistantText ?? ''
+    if (extractSpeak(text) !== null) {
+      for (const s of streamerRef.current.flush()) speak(s)
+    } else if (text.trim()) {
+      // Model didn't wrap a <speak> summary — speak a brief fallback, not the whole reply.
+      speak(firstSentences(text, 2))
+    }
     speakReplyRef.current = false // spoken this voice reply; don't speak subsequent typed turns
   }, [status, assistantMessageId, speak])
+
+  // Stop Eve speaking: halt playback AND further synthesis (so it stops spending TTS tokens).
+  const stopSpeaking = useCallback(() => {
+    speakReplyRef.current = false
+    clearPlayback()
+    setState((s) => (s === 'speaking' ? 'idle' : s))
+  }, [clearPlayback])
 
   // ── Teardown of the STT capture side only (keeps AudioContext for playback) ──
   const teardownCapture = useCallback(() => {
@@ -424,5 +441,13 @@ export function useVoice({
     }
   }, [teardownCapture, clearPlayback])
 
-  return { available: voiceAvailable, listening, state, startListening, stopListening, toggle }
+  return {
+    available: voiceAvailable,
+    listening,
+    state,
+    startListening,
+    stopListening,
+    stopSpeaking,
+    toggle,
+  }
 }

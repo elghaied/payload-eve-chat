@@ -33,6 +33,29 @@ export function stripSpeak(text: string): string {
 }
 
 /**
+ * Remove only the literal <speak>/</speak> tags, keeping the inner text, so the chat DISPLAYS
+ * the full reply (including the spoken summary) without showing raw tags. (Differs from
+ * stripSpeak, which removes the whole block.)
+ */
+export function removeSpeakTags(text: string): string {
+  return text.replace(/<\/?speak>/gi, '')
+}
+
+/**
+ * First `max` sentences of a string — used as the spoken fallback when the model forgot to
+ * wrap a <speak> summary, so voice replies stay short instead of reading the whole answer.
+ */
+export function firstSentences(text: string, max = 2): string {
+  const cleaned = text.replace(/\s+/g, ' ').trim()
+  const sentences = cleaned.match(/[^.!?]+[.!?]+/g)
+  if (!sentences || sentences.length === 0) return cleaned.slice(0, 240)
+  return sentences
+    .slice(0, max)
+    .map((s) => s.trim())
+    .join(' ')
+}
+
+/**
  * Strip content the TTS shouldn't read aloud — emoji and pictographs (incl. flag
  * pairs, variation selectors, and ZWJ joiners) — then collapse the gaps. Returns
  * '' when nothing speakable remains (caller should skip synthesizing).

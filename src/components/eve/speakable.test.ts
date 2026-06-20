@@ -1,5 +1,32 @@
 import { describe, expect, it } from 'vitest'
-import { extractSpeak, stripForSpeech, stripSpeak } from './speakable'
+import {
+  extractSpeak,
+  firstSentences,
+  removeSpeakTags,
+  stripForSpeech,
+  stripSpeak,
+} from './speakable'
+
+describe('removeSpeakTags', () => {
+  it('keeps inner text, drops only the tags', () => {
+    expect(removeSpeakTags('<speak>Hi there.</speak> More detail.')).toBe('Hi there. More detail.')
+  })
+  it('handles an unclosed (streaming) tag', () => {
+    expect(removeSpeakTags('<speak>partial')).toBe('partial')
+  })
+  it('returns text unchanged when no tags', () => {
+    expect(removeSpeakTags('plain reply')).toBe('plain reply')
+  })
+})
+
+describe('firstSentences', () => {
+  it('returns the first N sentences', () => {
+    expect(firstSentences('One. Two. Three.', 2)).toBe('One. Two.')
+  })
+  it('handles text with no sentence punctuation', () => {
+    expect(firstSentences('no punctuation here', 2)).toBe('no punctuation here')
+  })
+})
 
 describe('extractSpeak', () => {
   it('returns null before any <speak> tag appears', () => {

@@ -3,6 +3,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from '@payloadcms/ui'
 import { useEveAgent } from 'eve/react'
 import type { EveDynamicToolPart } from 'eve/react'
+import { SquareIcon } from 'lucide-react'
 import {
   Conversation,
   ConversationContent,
@@ -27,7 +28,7 @@ import { ThinkingIndicator, ErrorNotice } from './ChatStatus'
 import { getPendingInput, type InputResponseValue } from './inputRequest'
 import { VoiceButton } from './VoiceButton'
 import { useVoice } from './useVoice'
-import { stripSpeak } from './speakable'
+import { removeSpeakTags } from './speakable'
 import './eve.css'
 
 // ── Voice constants ───────────────────────────────────────────────────────────
@@ -39,9 +40,10 @@ import './eve.css'
  * (detail, links, code) still streams to the chat window.
  */
 const VOICE_REPLY_INSTRUCTION =
-  'This is a spoken voice conversation. Still use tools (search, create, find, update) whenever ' +
-  'the request needs them — call the tool, do not just say you will. Then give a brief spoken ' +
-  'summary in plain conversational prose (no Markdown, lists, code, or emoji), 1–3 sentences.'
+  'This is a spoken voice conversation. Use tools (search, create, find, update) when needed — ' +
+  'actually call them, do not just say you will. Begin your reply with a one- or two-sentence ' +
+  'spoken summary wrapped in <speak>…</speak> (ONLY that is read aloud), then add any extra ' +
+  'detail after it. Keep the spoken summary plain — no Markdown, lists, code, or emoji.'
 
 export { type ConversationSummary }
 
@@ -374,7 +376,7 @@ const EveChatInner: React.FC<EveChatProps & { initialEvents: unknown[]; voiceAva
                           // Strip <speak>…</speak> blocks so the tags/inner text
                           // don't show raw in the chat (TTS speaks them instead).
                           const displayText =
-                            m.role === 'assistant' ? stripSpeak(part.text) : part.text
+                            m.role === 'assistant' ? removeSpeakTags(part.text) : part.text
                           return (
                             <MessageResponse key={partKey}>{displayText}</MessageResponse>
                           )
@@ -423,15 +425,21 @@ const EveChatInner: React.FC<EveChatProps & { initialEvents: unknown[]; voiceAva
             {voiceAvailable && (
               <PromptInputTools>
                 <VoiceButton voice={voice} />
-                {voice.listening && (
+                {voice.state === 'speaking' ? (
+                  <button
+                    type="button"
+                    onClick={() => voice.stopSpeaking()}
+                    className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-muted-foreground text-xs hover:bg-accent hover:text-accent-foreground"
+                    aria-label="Stop speaking"
+                  >
+                    <SquareIcon className="size-3 fill-current" />
+                    Speaking… tap to stop
+                  </button>
+                ) : voice.listening ? (
                   <span className="text-muted-foreground text-xs" role="status">
-                    {voice.state === 'speaking'
-                      ? 'Speaking…'
-                      : voice.state === 'thinking'
-                        ? 'Thinking…'
-                        : 'Listening…'}
+                    {voice.state === 'thinking' ? 'Thinking…' : 'Listening…'}
                   </span>
-                )}
+                ) : null}
               </PromptInputTools>
             )}
             <PromptInputSubmit

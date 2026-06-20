@@ -13,6 +13,7 @@ import {
 } from 'lucide-react'
 import type { ReactNode } from 'react'
 import type { EveDynamicToolPart } from 'eve/react'
+import { MessageResponse } from '@/components/ai-elements/message'
 import { Spinner } from '@/components/ui/spinner'
 import { humanizeToolName } from './inputRequest'
 import { describeToolResult, hostOf, runningLabel, type ToolResultView } from './toolResult'
@@ -34,33 +35,40 @@ function ResultBody({ view }: { view: ToolResultView }) {
       return <span className="text-muted-foreground">No web results.</span>
     return (
       <div>
-        {view.answer && (
-          <p className="mb-2 whitespace-pre-wrap text-foreground">{view.answer}</p>
-        )}
+        <div className="mb-1.5 font-medium">Web search</div>
         {view.results.length > 0 && (
-          <div className="mb-1.5 font-medium text-muted-foreground text-xs uppercase tracking-wide">
-            Sources
-          </div>
+          <ul className="mb-2 space-y-1.5">
+            {view.results.map((r, i) => (
+              <li key={i} className="min-w-0">
+                <a
+                  href={r.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex max-w-full items-center gap-1 text-primary hover:underline"
+                >
+                  <span className="truncate">{r.title}</span>
+                  <ExternalLinkIcon className="size-3 shrink-0 opacity-60" />
+                </a>
+                <div className="truncate text-muted-foreground text-xs">
+                  {hostOf(r.url)}
+                  {r.pageAge ? ` · ${r.pageAge}` : ''}
+                </div>
+              </li>
+            ))}
+          </ul>
         )}
-        <ul className="space-y-1.5">
-          {view.results.map((r, i) => (
-            <li key={i} className="min-w-0">
-              <a
-                href={r.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex max-w-full items-center gap-1 text-primary hover:underline"
-              >
-                <span className="truncate">{r.title}</span>
-                <ExternalLinkIcon className="size-3 shrink-0 opacity-60" />
-              </a>
-              <div className="truncate text-muted-foreground text-xs">
-                {hostOf(r.url)}
-                {r.pageAge ? ` · ${r.pageAge}` : ''}
-              </div>
-            </li>
-          ))}
-        </ul>
+        {view.answer && (
+          // Eve summarizes the search in her own reply, so keep the raw answer collapsed —
+          // and render it as Markdown (not raw ** ** ) when expanded.
+          <details>
+            <summary className="cursor-pointer text-muted-foreground text-xs">
+              Show full answer
+            </summary>
+            <div className="mt-1 text-sm">
+              <MessageResponse>{view.answer}</MessageResponse>
+            </div>
+          </details>
+        )}
       </div>
     )
   }

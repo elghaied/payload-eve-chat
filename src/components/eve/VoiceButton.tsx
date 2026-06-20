@@ -31,17 +31,20 @@ export function VoiceButton({ voice }: { voice: Voice }) {
 
   // Keyboard PTT: hold Space (ignored while typing in an input/textarea/contenteditable).
   useEffect(() => {
-    const isTyping = () => {
-      const el = document.activeElement as HTMLElement | null
-      return (
-        !!el &&
-        (el.tagName === 'INPUT' ||
-          el.tagName === 'TEXTAREA' ||
-          el.isContentEditable)
-      )
+    // Only let Space type when the focused field ALREADY has text — otherwise Space is PTT.
+    // (The chat composer is focused by default, so bailing on any focused field meant the
+    // shortcut never fired.)
+    const typingWithText = () => {
+      const el = document.activeElement as HTMLInputElement | HTMLTextAreaElement | null
+      if (!el) return false
+      const isField =
+        el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable
+      if (!isField) return false
+      const value = el.isContentEditable ? (el.textContent ?? '') : (el.value ?? '')
+      return value.trim().length > 0
     }
     const down = (e: KeyboardEvent) => {
-      if (e.code !== 'Space' || e.repeat || keyHeldRef.current || isTyping()) return
+      if (e.code !== 'Space' || e.repeat || keyHeldRef.current || typingWithText()) return
       e.preventDefault()
       keyHeldRef.current = true
       engagedRef.current = true

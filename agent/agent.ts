@@ -1,19 +1,25 @@
 import { defineAgent } from "eve";
-import { createGroq } from "@ai-sdk/groq";
 
-// Direct Groq provider (bypasses Vercel AI Gateway → no Vercel billing/card).
-// Reads GROQ_API_KEY from the environment (.env.local). Model is overridable
-// via EVE_MODEL; default is a tool-calling-capable Groq model since the agent
-// drives Posts/Tasks through MCP tool calls.
-const groq = createGroq({ apiKey: process.env.GROQ_API_KEY });
-
-// Direct-provider models aren't in Eve's AI Gateway metadata registry, so Eve can't
-// auto-derive the context window for its compaction feature — declare it explicitly.
-const CONTEXT_WINDOW_TOKENS = Number(process.env.EVE_CONTEXT_WINDOW_TOKENS) || 131072;
-
+// Vercel AI Gateway: `model` is a gateway model slug (provider/model). Requests route
+// through the gateway, authenticated by VERCEL_OIDC_TOKEN locally (run `vercel env pull`)
+// and by OIDC on Vercel — no provider key in code.
+//
+// Billing: by default the gateway uses Vercel AI Gateway credits (no markup). To bill a
+// provider you already pay (e.g. use your own Groq/Anthropic credits), add that provider
+// under AI Gateway → Bring Your Own Key (BYOK) in the Vercel dashboard. To pin requests to
+// a specific provider, set modelOptions.providerOptions.gateway.only (e.g. ['groq']).
+//
+// EVE_MODEL overrides the slug. gpt-oss-120b does native tool calling correctly (the agent
+// drives Posts/Tasks through MCP tool calls); avoid models weak at tool calls.
 export default defineAgent({
-  // gpt-oss-120b does native Groq tool calling correctly; llama-3.3-70b emits malformed
-  // tool calls (jams JSON args into the tool name) and fails. Override via EVE_MODEL.
-  model: groq(process.env.EVE_MODEL || "openai/gpt-oss-120b"),
-  modelContextWindowTokens: CONTEXT_WINDOW_TOKENS,
+  model: process.env.EVE_MODEL || "openai/gpt-oss-120b",
+  // gpt-oss-120b's creator is "openai" but OpenAI doesn't *serve* it on the gateway;
+  // it's served by groq/cerebras/fireworks/etc. Pin the serving provider to groq so the
+  // gateway doesn't (incorrectly) filter to the openai provider. Override via EVE_PROVIDER.
+  modelOptions: {
+    providerOptions: {
+      gateway: { only: [process.env.EVE_PROVIDER || "groq"] },
+    },
+  },
 });
+

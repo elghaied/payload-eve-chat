@@ -21,7 +21,7 @@ Clone this repo and `cd` into it.
 ### Development
 
 1. First [clone the repo](#clone) if you have not done so already
-2. `cd my-project && cp .env.example .env.local` — fill in `DATABASE_URL`, `PAYLOAD_SECRET`, and `GROQ_API_KEY` (see [Environment setup](#environment-setup)). Use `.env.local` (gitignored) for secrets; `.env.example` is a safe-to-commit template.
+2. `cd my-project && cp .env.example .env.local` — fill in `DATABASE_URL` and `PAYLOAD_SECRET`, then authenticate the AI Gateway with `vercel link && vercel env pull .env.local` (see [Environment setup](#environment-setup)). Use `.env.local` (gitignored) for secrets; `.env.example` is a safe-to-commit template.
 
 3. `pnpm install && pnpm dev` to install dependencies and start the dev server
 4. Open `http://localhost:3000/admin` to log in and create your first admin user, then navigate to **AI Chat Agent (Eve)** in the sidebar (or go to `http://localhost:3000/admin/eve`) to start chatting.
@@ -68,7 +68,7 @@ That's it! The Docker instance will help you get up and running quickly while al
 
 ## AI Chat Agent (Eve)
 
-> Payload exposes its collections over MCP, and an in-admin chat agent built on the **Vercel Eve framework** reads and writes Posts and Tasks entirely through those MCP tools. The model backend is Groq (`llama-3.3-70b-versatile` by default).
+> Payload exposes its collections over MCP, and an in-admin chat agent built on the **Vercel Eve framework** reads and writes Posts and Tasks entirely through those MCP tools. The model is routed through the **Vercel AI Gateway** (`openai/gpt-oss-120b`, served by Groq, by default).
 
 ### Architecture
 
@@ -90,23 +90,30 @@ agent/
 
 Eve calls tools on the **Payload MCP server** (`@payloadcms/plugin-mcp`, endpoint `/api/mcp`) through the `payload-mcp` connection, which is wired in `agent/connections/payload-mcp.ts`. This is how it reads and writes **Posts** and **Tasks**. The MCP config explicitly locks down `Users`, `Media`, and `Conversations` so only `Posts` and `Tasks` are reachable over MCP.
 
-Sessions are durable — the Eve framework tracks conversation history; no separate `Conversations` collection is needed.
+Sessions are durable — the Eve framework persists each session's history. A thin `Conversations` collection stores only the per-thread session cursor (`eveSessionId`, `continuationToken`, `streamIndex`, owner) so the admin sidebar can list and reopen threads; message bodies live in Eve, not in Payload.
 
 ### Environment setup
 
 Copy `.env.example` to `.env.local` (gitignored) and fill in:
 
 ```
-# --- Eve agent (Vercel Eve framework) ---
-EVE_MODEL=llama-3.3-70b-versatile     # Groq model id (tool-calling capable)
-GROQ_API_KEY=your-groq-key-here
+# --- Eve agent (Vercel Eve framework, via Vercel AI Gateway) ---
+EVE_MODEL=openai/gpt-oss-120b         # AI Gateway model slug (tool-calling capable)
+EVE_PROVIDER=groq                     # serving-provider pin (gpt-oss is served by groq/cerebras/...)
 MCP_SERVER_URL=http://localhost:3000/api/mcp
 MCP_API_KEY=                          # optional in dev; required in production
 ```
 
-Get a free Groq API key at <https://console.groq.com>. `EVE_MODEL` can be any Groq model that supports tool calling (e.g. `llama-3.3-70b-versatile`, `moonshotai/kimi-k2-instruct`).
+**AI Gateway auth:** run `vercel link` then `vercel env pull .env.local` to fetch a
+`VERCEL_OIDC_TOKEN` for local dev (or set `AI_GATEWAY_API_KEY`). The gateway requires a
+credit card on the linked Vercel team (it unlocks free credits). By default it bills Vercel
+AI Gateway credits; to use your own provider credits instead (e.g. Groq), add that provider
+under **AI Gateway → Bring Your Own Key** in the dashboard.
 
-**Switching to a different AI SDK provider** (OpenAI, Anthropic, etc.) is possible by updating the provider in `agent/agent.ts` — the Eve framework accepts any Vercel AI SDK-compatible provider.
+**Model choice:** `EVE_MODEL` is any AI Gateway slug whose model supports tool calling (the
+agent drives Posts/Tasks via MCP tool calls). `openai/gpt-oss-120b` works well; avoid models
+weak at tool calls (`llama-3.3-70b` emits malformed tool calls). `EVE_PROVIDER` pins the
+serving provider when the model's creator isn't itself a provider (as with gpt-oss).
 
 ### MCP authentication: dev vs. production
 
@@ -116,7 +123,7 @@ In **production**, the MCP endpoint is protected by a Bearer API key. In Payload
 
 ### Deployment (local-first for now)
 
-The app runs locally with `pnpm devsafe` + MongoDB (see [Docker](#docker) below for the `docker compose up -d mongo` command). **Cloud deployment is deferred** — the full production story (Vercel AI Gateway for model routing, Vercel Sandbox for code-exec tools) requires Vercel billing. When deployed, the model stays Groq (or any direct provider); only hosting moves.
+The app runs locally with `pnpm devsafe` + MongoDB (see [Docker](#docker) below for the `docker compose up -d mongo` command). Model routing already goes through the **Vercel AI Gateway** (which needs a card on the linked Vercel team). **App hosting on Vercel is optional/deferred** — when you deploy, model routing is unchanged (same AI Gateway); only where Next.js/Payload run moves. A future Vercel Sandbox code-exec tool would also need the cloud deploy.
 
 ### Features deferred to the `ai-sdk` branch
 

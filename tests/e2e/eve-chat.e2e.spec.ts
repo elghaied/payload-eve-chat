@@ -4,10 +4,15 @@
  * Prerequisites:
  *   - A running dev server on :3000 (handled by playwright.config.ts webServer;
  *     reuseExistingServer is true so a pre-running `pnpm dev` is reused).
- *   - GROQ_API_KEY set in .env.local (Eve uses Groq as AI gateway).
- *   - EVE_MODEL set to a tool-calling model (default: openai/gpt-oss-120b).
+ *   - AI Gateway auth: VERCEL_OIDC_TOKEN (run `vercel env pull .env.local`) or
+ *     AI_GATEWAY_API_KEY, with a credit card on the linked Vercel team.
+ *   - EVE_MODEL set to a tool-calling model (default: openai/gpt-oss-120b via groq).
  *     NOTE: llama-3.3-70b-versatile emits malformed tool calls and WILL fail.
  *   - MongoDB accessible (MONGODB_URI in .env.local).
+ *
+ * A beforeAll guard checks GET /eve/v1/health first: the Eve runtime is a SEPARATE
+ * `eve dev` child process (not managed by Playwright's webServer), so if it's down the
+ * app 500s and the test would fail confusingly. The guard turns that into a clear error.
  *
  * The test is self-contained: it seeds its own admin user (via the Payload
  * Node API, same pattern as admin.e2e.spec.ts) and cleans up after itself.
@@ -44,6 +49,16 @@ test.describe('Eve chat — task creation', () => {
   let page: Page
 
   test.beforeAll(async ({ browser }) => {
+    // Fail fast & legibly if the Eve runtime (separate `eve dev` child) is unreachable.
+    const health = await fetch(`${SERVER_URL}/eve/v1/health`).catch(() => null)
+    if (!health || !health.ok) {
+      throw new Error(
+        `Eve runtime not reachable at ${SERVER_URL}/eve/v1/health ` +
+          `(status: ${health?.status ?? 'no response'}). Start the app with \`pnpm devsafe\` ` +
+          `so the eve dev child process is running before the e2e.`,
+      )
+    }
+
     await seedTestUser()
 
     const context = await browser.newContext()

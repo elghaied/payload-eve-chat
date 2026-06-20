@@ -96,11 +96,19 @@ test.describe('Eve chat — task creation', () => {
     await expect(submitBtn).toBeVisible({ timeout: EVE_TURN_TIMEOUT_MS })
 
     // ── 4. Assert the task was actually created ──────────────────────────────
-    // Navigate to the tasks collection list view and look for the unique title.
-    await page.goto(`${SERVER_URL}/admin/collections/tasks`)
-    await expect(page.getByText(TASK_TITLE, { exact: false })).toBeVisible({
-      timeout: 15_000,
-    })
+    // Poll the tasks API for the unique title (robust against list-view render timing).
+    await expect
+      .poll(
+        async () => {
+          const res = await page.request.get(
+            `${SERVER_URL}/api/tasks?where[title][equals]=${encodeURIComponent(TASK_TITLE)}&limit=1`,
+          )
+          const json = await res.json()
+          return json.totalDocs ?? 0
+        },
+        { timeout: 20_000 },
+      )
+      .toBeGreaterThan(0)
   })
 
   test('reopening a thread replays its history (B2)', async () => {

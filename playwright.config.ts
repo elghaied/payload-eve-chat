@@ -15,8 +15,10 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   /* Retry on CI only */
   retries: process.env.CI ? 2 : 0,
-  /* Opt out of parallel tests on CI. */
-  workers: process.env.CI ? 1 : undefined,
+  /* Run serially (one worker): every e2e spec seeds/cleans the SAME admin user in the
+   * shared dev database, so parallel workers race (one file's afterAll cleanup deletes the
+   * user mid-run of another → logins fail). Serial execution avoids that cross-file race. */
+  workers: 1,
   /* Reporter to use. See https://playwright.dev/docs/test-reporters */
   reporter: 'html',
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */

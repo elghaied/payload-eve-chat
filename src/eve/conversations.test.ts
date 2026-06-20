@@ -192,6 +192,10 @@ describe('updateConversationCursor', () => {
       overrideAccess: false,
       user,
     })
+    // The find-phase lookup must also enforce access control (overrideAccess:false + user).
+    expect(payload.find).toHaveBeenCalledWith(
+      expect.objectContaining({ collection: 'conversations', overrideAccess: false, user }),
+    )
   })
 
   it('is a no-op when no row matches eveSessionId', async () => {

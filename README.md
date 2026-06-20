@@ -4,7 +4,9 @@ A working example of an AI chat agent built inside Payload CMS. The agent ("Eve"
 
 See the [AI Chat Agent (Eve)](#ai-chat-agent-eve) section below for architecture details and environment setup.
 
-![Eve chat with the Claude.ai-style post preview panel](images/eve-chat-post-preview.png)
+![Eve chat in the Payload admin](images/eve-chat-post-preview.png)
+
+> _Screenshot shows the post-preview panel, which currently lives on the `ai-sdk` branch — its Eve port is pending (see `docs/eve-backlog.md`)._
 
 ## Requirements
 
@@ -23,7 +25,7 @@ Clone this repo and `cd` into it.
 1. First [clone the repo](#clone) if you have not done so already
 2. `cd my-project && cp .env.example .env.local` — fill in `DATABASE_URL` and `PAYLOAD_SECRET`, then authenticate the AI Gateway with `vercel link && vercel env pull .env.local` (see [Environment setup](#environment-setup)). Use `.env.local` (gitignored) for secrets; `.env.example` is a safe-to-commit template.
 
-3. `pnpm install && pnpm dev` to install dependencies and start the dev server
+3. `pnpm install && pnpm devsafe` to install dependencies and start the dev server (`devsafe` clears the `.next` cache to avoid a Payload-v4 canary stale-cache issue; plain `pnpm dev` can error on stale RSC chunks)
 4. Open `http://localhost:3000/admin` to log in and create your first admin user, then navigate to **AI Chat Agent (Eve)** in the sidebar (or go to `http://localhost:3000/admin/eve`) to start chatting.
 
 That's it! Changes made in `./src` will be reflected in your app. Follow the on-screen instructions to login and create your first admin user. Then check out [Production](#production) once you're ready to build and serve your app, and [Deployment](#deployment) when you're ready to go live.

@@ -52,10 +52,13 @@ From the per-task and final whole-branch reviews + integration findings.
   `unique` (and/or wrap the find→create→update in `src/app/api/eve/session-index/route.ts`
   in a transaction) to remove the duplicate-row race under concurrent/double-submit persists.
   Regenerate types. *(Final review — recommended.)*
-- [ ] **B2 — Visual history replay on thread reopen.** Reopening a thread currently resumes
-  the session (can continue) but shows an **empty transcript**. Populate `initialEvents` via
-  `GET /eve/v1/session/:id/stream?startIndex=0` (server-side in `EveView`, or client-side on
-  mount in `EveChat`) so past messages render. *(Known limitation from Task 6/7.)*
+- [x] **B2 — Visual history replay on thread reopen.** ✅ Done (commit cfa6000). EveChat
+  replays `?startIndex=0` events up to the stored `streamIndex` and seeds
+  `useEveAgent.initialEvents`. **Also fixed a latent bug:** `persistSession` posted
+  `sessionId` while the route expects `eveSessionId` → browser→Conversations persistence had
+  been silently 400-ing since Task 6 (sidebar/history never persisted). Verified by e2e
+  (reopen replays history). Plus e2e reliability fixes (commit 1ad9933): serial workers +
+  API-based assertions; `seedUser` loads dotenv so Playwright workers hit the right DB.
 - [x] **B3 — e2e Eve-runtime health guard.** ✅ Done (commit 7e241eb). The Eve runtime is a *second* process
   (`eve dev`) not managed by Playwright's `webServer`; if it's down the app 500s and the e2e
   fails confusingly. Add a `GET /eve/v1/health` precondition (globalSetup or in-test) so the
@@ -71,6 +74,9 @@ From the per-task and final whole-branch reviews + integration findings.
   (it shows the deferred post-preview panel). *(Task 9.)*
 - [x] **B7 — Test assertion gap.** ✅ Done (commit 89ed885). `updateConversationCursor` test doesn't assert
   `overrideAccess: false` on the find-phase lookup (impl is correct; test is thin). *(Task 5.)*
+- [ ] **B10 — `admin.e2e.spec.ts` "navigate to dashboard" flakiness.** Pre-existing, not
+  Eve-related — likely a Payload v4-canary admin-dashboard assertion. Surfaced while
+  stabilizing the e2e suite for B2. Investigate/relax that assertion.
 - [ ] **B8 — Revisit `docker-compose.yml` profiles.** It still has `ollama` / `voice` (stt/tts)
   profiles unused by the Eve build; reconcile when A3 (voice) is re-homed. *(Task 9.)*
 - [ ] **B9 — Orphaned `src/eve/config.ts` + deferred modules.** `config.ts` and the deferred

@@ -105,6 +105,13 @@ export function useVoice({
     activeRef.current = active
   })
 
+  // Mirror the agent status so the long-lived STT message handler can tell whether a turn
+  // is in flight (it captures values at start() time, which would otherwise be stale).
+  const statusRef = useRef(status)
+  useEffect(() => {
+    statusRef.current = status
+  })
+
   // ── STT refs ──────────────────────────────────────────────────────────────
   const sttWsRef = useRef<WebSocket | null>(null)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
@@ -349,8 +356,12 @@ export function useVoice({
           onTranscript(text)
         }
       } else if (msgType === 'SpeechStarted') {
-        // Barge-in: user started speaking while Eve was talking.
-        if (isPlayingRef.current || ttsTextQueueRef.current.length > 0) {
+        // Barge-in / turn-taking: the user started speaking again. Interrupt whenever a turn
+        // is in flight (thinking OR streaming) or TTS is active — NOT just while audio plays —
+        // so the next utterance starts a fresh turn instead of queuing behind the current one
+        // (which caused the "she answers the previous question" lag).
+        const agentBusy = statusRef.current === 'submitted' || statusRef.current === 'streaming'
+        if (isPlayingRef.current || ttsTextQueueRef.current.length > 0 || agentBusy) {
           clearPlayback()
           onBargeIn?.()
           setState('listening')

@@ -25,6 +25,8 @@ import { Reasoning } from '@/components/ai-elements/reasoning'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { ConversationSidebar, type ConversationSummary } from './ConversationSidebar'
 import { PostPreviewPanel } from './PostPreviewPanel'
+import { InputRequestCard } from './InputRequestCard'
+import { getPendingInput, humanizeToolName, type InputResponseValue } from './inputRequest'
 import { findOpenableDraft } from './proposeDraft'
 import type { PostDraft } from '@/eve/approval-message'
 import { buildApprovalMessage } from '@/eve/approval-message'
@@ -177,14 +179,38 @@ function renderProposePostPart(
 function renderToolPart(
   part: EveDynamicToolPart,
   key: string,
-  onReopenPropose?: (id: string, draft: PostDraft) => void,
+  opts: {
+    onReopenPropose?: (id: string, draft: PostDraft) => void
+    onRespondInput?: (response: InputResponseValue) => void
+    busy?: boolean
+  } = {},
 ): React.ReactNode {
+  // Interactive human-in-the-loop request (Eve's `ask_question` or any `needsApproval`
+  // tool): render the InputRequestCard so the user can actually answer, instead of
+  // leaving a raw-JSON "Awaiting Approval" card with no controls.
+  const pending = getPendingInput(part)
+  if (pending) {
+    return (
+      <InputRequestCard
+        key={key}
+        request={pending.request}
+        answered={pending.answered}
+        busy={opts.busy}
+        onRespond={(r) => opts.onRespondInput?.(r)}
+      />
+    )
+  }
+
   // Compact "review draft" card for completed propose_post calls.
-  if (part.toolName === 'propose_post' && part.state === 'output-available' && onReopenPropose) {
+  if (
+    part.toolName === 'propose_post' &&
+    part.state === 'output-available' &&
+    opts.onReopenPropose
+  ) {
     return renderProposePostPart(
       part as EveDynamicToolPart & { state: 'output-available' },
       key,
-      onReopenPropose,
+      opts.onReopenPropose,
     )
   }
 
@@ -195,9 +221,16 @@ function renderToolPart(
       <ToolOutput output={undefined} errorText={part.errorText} />
     ) : null
 
+  // Collapse completed/running tool cards by default to reduce noise; only auto-open
+  // errors. Show a humanized name ("Find documents") rather than the raw slug.
   return (
-    <Tool key={key}>
-      <ToolHeader type="dynamic-tool" toolName={part.toolName} state={part.state} />
+    <Tool key={key} defaultOpen={part.state === 'output-error'}>
+      <ToolHeader
+        type="dynamic-tool"
+        toolName={part.toolName}
+        title={humanizeToolName(part.toolMetadata?.eve?.name ?? part.toolName)}
+        state={part.state}
+      />
       <ToolContent>
         <ToolInput input={part.input} />
         {output}
@@ -375,6 +408,15 @@ const EveChatInner: React.FC<EveChatProps & { initialEvents: unknown[]; voiceAva
     setActiveDraft({ id, draft })
   }, [])
 
+  // Answer a HITL input request (ask_question / approval) by resuming the turn.
+  const handleRespondInput = useCallback(
+    (response: InputResponseValue) => {
+      void agent.send({ inputResponses: [response] })
+    },
+    [agent],
+  )
+  const agentBusy = agent.status === 'submitted' || agent.status === 'streaming'
+
   return (
     <TooltipProvider>
     <div className="eve-scope flex h-[calc(100dvh-var(--app-header-height,48px))] min-h-[600px]">
@@ -422,7 +464,11 @@ const EveChatInner: React.FC<EveChatProps & { initialEvents: unknown[]; voiceAva
                         }
 
                         if (part.type === 'dynamic-tool') {
-                          return renderToolPart(part, partKey, handleReopenPropose)
+                          return renderToolPart(part, partKey, {
+                            onReopenPropose: handleReopenPropose,
+                            onRespondInput: handleRespondInput,
+                            busy: agentBusy,
+                          })
                         }
 
                         // step-start: no visible output

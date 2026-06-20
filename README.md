@@ -24,9 +24,11 @@ voice, Eve's built-in web search) so it deploys to Vercel with no Docker/self-ho
   a model whose provider supports it — the default Claude does; gpt-oss/Groq does not.)
 - **Hands-free voice** — streaming speech-to-text and text-to-speech via **Deepgram** (Nova-3 STT
   + Aura-2 TTS) with end-of-utterance detection and barge-in. The mic button appears when
-  `DEEPGRAM_API_KEY` is configured. The key must have the **Member** role (or higher) — the
-  browser uses short-lived tokens from `/api/deepgram/token`, and `/v1/auth/grant` returns
-  `403 Insufficient permissions` for lower-scoped keys.
+  `DEEPGRAM_API_KEY` is configured. The key always stays server-side: **STT** uses a short-lived
+  token from `/api/deepgram/token` (browser opens the Deepgram WS directly); **TTS** is proxied
+  through `/api/deepgram/speak` (Deepgram's grant tokens are ASR-scoped only, so Aura TTS can't use
+  them). Use a **Member-role key with default scopes** — a lower role fails STT
+  (`403 Insufficient permissions`), and an ASR-only-scoped key makes TTS silent.
 - **Code-exec disabled by design** — Eve's default sandbox tools (`bash`/`read_file`/`write_file`/
   `glob`/`grep`) are turned off; the agent operates only on Payload data over MCP.
 

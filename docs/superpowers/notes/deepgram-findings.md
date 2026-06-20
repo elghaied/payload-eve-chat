@@ -567,3 +567,27 @@ new WebSocket("wss://api.deepgram.com/v1/speak?model=aura-2-thalia-en&encoding=l
 ---
 
 *Sources: [Deepgram JS SDK (Context7)](https://github.com/deepgram/deepgram-js-sdk), [Deepgram API Reference](https://developers.deepgram.com), [Deepgram Pricing](https://deepgram.com/pricing), [Token Auth Guide](https://developers.deepgram.com/guides/fundamentals/token-based-authentication), [TTS Models](https://developers.deepgram.com/docs/tts-models), npm registry.*
+
+---
+
+## CORRECTION (from live use, 2026-06-21): grant tokens are ASR-only → TTS needs a server proxy
+
+The §3 recommendation (browser opens BOTH STT and TTS WS with a short-lived `/v1/auth/grant`
+token) is **wrong for TTS**. Verified against a live account:
+
+- `/v1/auth/grant` issues tokens scoped **`["asr:write"]`** only (decoded the JWT). They authorize
+  live STT (`/v1/listen`) but **Aura TTS (`/v1/speak`) rejects them** — the WS opens, returns a
+  `Metadata` message, then closes with code **1008 (policy violation)** and zero audio. Tested both
+  `aura-2-thalia-en` and `aura-asteria-en` — same result, so it's a scope issue, not a model issue.
+- The **raw API key works for TTS**: `POST https://api.deepgram.com/v1/speak?model=…&encoding=
+  linear16&sample_rate=24000` with `Authorization: Token <key>` → HTTP 200 + audio bytes.
+
+**Implemented architecture (this repo):**
+- STT: browser WS to `/v1/listen` with the grant token (`['bearer', token]`) — unchanged, works.
+- TTS: **server proxy** `POST /api/deepgram/speak` (Payload-auth-gated) → Deepgram REST `/v1/speak`
+  with the raw key → streams linear16 PCM back → browser decodes + plays via AudioContext. The key
+  never reaches the browser.
+
+**Also:** an API key whose SCOPE is restricted to ASR makes even the raw-key TTS fail — use a
+Member key with default (full) scopes. Trim the key server-side (a trailing space → 400 "Invalid
+credentials"). Don't depend on the model emitting `<speak>` tags — speak the reply prose directly.

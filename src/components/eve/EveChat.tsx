@@ -45,9 +45,8 @@ import './eve.css'
  * (detail, links, code) still streams to the chat window.
  */
 const VOICE_REPLY_INSTRUCTION =
-  'This is a spoken conversation. Reply naturally and concisely. ' +
-  'Wrap the portion to be spoken aloud in <speak>…</speak> at the start of your reply. ' +
-  'Keep the spoken part brief (1–3 sentences). You may elaborate in text after the </speak> tag.'
+  'This is a spoken voice conversation. Reply in plain, conversational prose — no Markdown, ' +
+  'lists, code blocks, or emoji — and keep it brief (1–3 sentences) since it will be read aloud.'
 
 export { type ConversationSummary }
 

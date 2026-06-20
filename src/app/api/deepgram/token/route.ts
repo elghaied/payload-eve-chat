@@ -19,7 +19,10 @@ export async function POST(req: Request): Promise<Response> {
     return Response.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  if (!process.env.DEEPGRAM_API_KEY) {
+  // Trim defensively — a stray space/newline in the env value corrupts the auth header
+  // (Deepgram then returns 400 "Invalid credentials").
+  const apiKey = process.env.DEEPGRAM_API_KEY?.trim()
+  if (!apiKey) {
     return Response.json({ error: 'voice not configured' }, { status: 503 })
   }
 
@@ -28,7 +31,7 @@ export async function POST(req: Request): Promise<Response> {
     res = await fetch('https://api.deepgram.com/v1/auth/grant', {
       method: 'POST',
       headers: {
-        Authorization: `Token ${process.env.DEEPGRAM_API_KEY}`,
+        Authorization: `Token ${apiKey}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({ ttl_seconds: 30 }),

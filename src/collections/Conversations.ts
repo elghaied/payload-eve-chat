@@ -7,8 +7,10 @@ const ownConversations: Access = ({ req }) => {
 }
 
 /**
- * Stores chat threads for the Eve agent. `messages` holds the AI SDK
- * `UIMessage[]` verbatim so the client can rehydrate a thread on reload.
+ * Thin index over Eve sessions. Each row maps a Payload user to an Eve
+ * session id. Messages live in Eve (replayed via GET /eve/v1/session/:id/stream).
+ * The `continuationToken` and `streamIndex` fields form the session cursor
+ * needed to continue or resume the session.
  */
 export const Conversations: CollectionConfig = {
   slug: 'conversations',
@@ -32,7 +34,9 @@ export const Conversations: CollectionConfig = {
       required: true,
       index: true,
     },
-    { name: 'messages', type: 'json' },
+    { name: 'eveSessionId', type: 'text', index: true },
+    { name: 'continuationToken', type: 'text' },
+    { name: 'streamIndex', type: 'number' },
   ],
   // v4 enables versions by default; chat threads don't need version history.
   versions: false,

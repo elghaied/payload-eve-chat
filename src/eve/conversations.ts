@@ -1,67 +1,79 @@
-import type { BasePayload, TypedUser } from 'payload'
-import type { Conversation } from '@/payload-types'
+import type { Payload } from 'payload'
+import type { Conversation, User } from '@/payload-types'
 
-/** Lists the current user's conversations, newest first. */
-export async function listConversations(
-  payload: BasePayload,
-  user: TypedUser,
-): Promise<Conversation[]> {
-  const { docs } = await payload.find({
-    collection: 'conversations',
-    user,
-    overrideAccess: false,
-    sort: '-updatedAt',
-    limit: 50,
-    depth: 0,
-  })
-  return docs
-}
-
-/** Loads one conversation if it belongs to the user; otherwise null. */
-export async function loadConversation(
-  payload: BasePayload,
-  id: string,
-  user: TypedUser,
-): Promise<Conversation | null> {
-  try {
-    return await payload.findByID({
-      collection: 'conversations',
-      id,
-      user,
-      overrideAccess: false,
-      depth: 0,
-    })
-  } catch {
-    return null
-  }
-}
-
-/** Creates a new conversation owned by the user. */
+/** Creates a new conversation row for the user, linked to the given Eve session. */
 export async function createConversation(
-  payload: BasePayload,
-  user: TypedUser,
+  payload: Payload,
+  user: User,
   title: string,
+  eveSessionId: string,
 ): Promise<Conversation> {
   return payload.create({
     collection: 'conversations',
-    user,
+    data: { title: title.slice(0, 80), user: user.id, eveSessionId },
     overrideAccess: false,
-    data: { title, user: user.id, messages: [] },
+    user,
   })
 }
 
-/** Replaces the stored messages array for a conversation. */
-export async function saveMessages(
-  payload: BasePayload,
-  id: string,
-  messages: unknown,
-  user: TypedUser,
+/**
+ * Updates the session cursor fields on the conversation row identified by
+ * `eveSessionId` and owned by `user`. Only the provided fields are written.
+ * No-op if no matching row is found.
+ */
+export async function updateConversationCursor(
+  payload: Payload,
+  eveSessionId: string,
+  user: User,
+  cursor: { continuationToken?: string; streamIndex?: number; title?: string },
 ): Promise<void> {
+  const res = await payload.find({
+    collection: 'conversations',
+    where: { eveSessionId: { equals: eveSessionId }, user: { equals: user.id } },
+    limit: 1,
+    overrideAccess: false,
+    user,
+  })
+  const row = res.docs[0]
+  if (!row) return
+
   await payload.update({
     collection: 'conversations',
-    id,
-    user,
+    id: row.id,
+    data: cursor,
     overrideAccess: false,
-    data: { messages: messages as Conversation['messages'] },
+    user,
   })
+}
+
+/** Returns all conversations for the user, sorted newest-first. */
+export async function listConversations(payload: Payload, user: User): Promise<Conversation[]> {
+  const res = await payload.find({
+    collection: 'conversations',
+    where: { user: { equals: user.id } },
+    sort: '-updatedAt',
+    limit: 100,
+    overrideAccess: false,
+    user,
+  })
+  return res.docs
+}
+
+/**
+ * Returns the conversation row for a given Eve session id owned by the user,
+ * or null if none exists.
+ */
+export async function loadConversationBySession(
+  payload: Payload,
+  eveSessionId: string,
+  user: User,
+): Promise<Conversation | null> {
+  const res = await payload.find({
+    collection: 'conversations',
+    where: { eveSessionId: { equals: eveSessionId }, user: { equals: user.id } },
+    limit: 1,
+    overrideAccess: false,
+    user,
+  })
+  return res.docs[0] ?? null
 }

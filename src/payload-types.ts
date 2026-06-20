@@ -231,15 +231,9 @@ export interface Conversation {
   id: string;
   title?: string | null;
   user: string | User;
-  messages?:
-    | {
-        [k: string]: unknown;
-      }
-    | unknown[]
-    | string
-    | number
-    | boolean
-    | null;
+  eveSessionId?: string | null;
+  continuationToken?: string | null;
+  streamIndex?: number | null;
   updatedAt: string;
   createdAt: string;
 }
@@ -429,7 +423,9 @@ export interface TasksSelect<T extends boolean = true> {
 export interface ConversationsSelect<T extends boolean = true> {
   title?: T;
   user?: T;
-  messages?: T;
+  eveSessionId?: T;
+  continuationToken?: T;
+  streamIndex?: T;
   updatedAt?: T;
   createdAt?: T;
 }

@@ -35,3 +35,21 @@ describe('payload.config.ts MCP configuration', () => {
     expect(configSource).toContain('delete: false')
   })
 })
+
+const mediaSource = readFileSync(resolve(process.cwd(), 'src/collections/Media.ts'), 'utf-8')
+
+describe('Media collection credit fields', () => {
+  it('has an optional credit text field', () => {
+    expect(mediaSource).toContain("name: 'credit'")
+    expect(mediaSource).toContain("type: 'text'")
+  })
+  it('has an optional creditUrl text field', () => {
+    expect(mediaSource).toContain("name: 'creditUrl'")
+  })
+  it('credit and creditUrl are not required', () => {
+    // Neither field should have required:true
+    const creditIdx = mediaSource.indexOf("name: 'credit'")
+    const creditBlock = mediaSource.slice(creditIdx, creditIdx + 120)
+    expect(creditBlock).not.toContain('required: true')
+  })
+})

@@ -31,7 +31,7 @@ import { AttachmentPreview } from './AttachmentPreview'
 import { ToolResultCard } from './ToolResultCard'
 import { Reasoning } from '@/components/ai-elements/reasoning'
 import { TooltipProvider } from '@/components/ui/tooltip'
-import { ConversationSidebar, type ConversationSummary } from './ConversationSidebar'
+import { dispatchConversationCreated } from './ConversationHistoryPanel'
 import { InputRequestCard } from './InputRequestCard'
 import { ThinkingIndicator, ErrorNotice } from './ChatStatus'
 import { getPendingInput, type InputResponseValue } from './inputRequest'
@@ -54,8 +54,6 @@ const VOICE_REPLY_INSTRUCTION =
   'spoken summary wrapped in <speak>…</speak> (ONLY that is read aloud), then add any extra ' +
   'detail after it. Keep the spoken summary plain — no Markdown, lists, code, or emoji.'
 
-export { type ConversationSummary }
-
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export interface SessionCursor {
@@ -65,7 +63,6 @@ export interface SessionCursor {
 }
 
 export interface EveChatProps {
-  conversations: ConversationSummary[]
   activeId?: string
   initialSession?: SessionCursor
   initialEvents?: unknown[]
@@ -278,7 +275,6 @@ function PreSendAttachmentStrip({
 // ── Inner: the live chat (one useEveAgent instance) ────────────────────────────
 
 const EveChatInner: React.FC<EveChatProps & { initialEvents: unknown[]; voiceAvailable: boolean }> = ({
-  conversations,
   activeId,
   initialSession,
   initialEvents,
@@ -286,7 +282,6 @@ const EveChatInner: React.FC<EveChatProps & { initialEvents: unknown[]; voiceAva
 }) => {
   const router = useRouter()
   const [input, setInput] = useState('')
-  const [sidebarConversations, setSidebarConversations] = useState(conversations)
 
   // Track the title for the current thread (first user message).
   const titleRef = useRef<string | undefined>(undefined)
@@ -330,15 +325,13 @@ const EveChatInner: React.FC<EveChatProps & { initialEvents: unknown[]; voiceAva
         streamIndex: session.streamIndex,
         title: titleRef.current,
       })
-      // Brand-new chat: the moment Eve assigns a session id (mid-turn), surface the thread
-      // in the sidebar AND reflect it in the URL — but via history.replaceState, NOT
-      // router.push. A push triggers an RSC navigation that remounts EveChat (keyed on
-      // activeId in EveView), discarding the in-flight stream and leaving an empty session.
+      // Brand-new chat: the moment Eve assigns a session id (mid-turn), reflect it in the
+      // URL (history.replaceState, NOT router.push — a push remounts EveChat and drops the
+      // in-flight stream) and announce it so the sidebar-tab history panel (a separate React
+      // tree) adds it live.
       if (firstSeen && !activeId) {
         const title = titleRef.current ?? 'New conversation'
-        setSidebarConversations((prev) =>
-          prev.some((c) => c.id === sid) ? prev : [{ id: sid, title }, ...prev],
-        )
+        dispatchConversationCreated({ id: sid, title })
         if (typeof window !== 'undefined') {
           window.history.replaceState(null, '', `?conversation=${sid}`)
         }
@@ -515,12 +508,6 @@ const EveChatInner: React.FC<EveChatProps & { initialEvents: unknown[]; voiceAva
   return (
     <TooltipProvider>
     <div className="eve-scope flex h-[calc(100dvh-var(--app-header-height,48px))] min-h-[600px]">
-      <ConversationSidebar
-        conversations={sidebarConversations}
-        activeId={activeId}
-        onSelect={(id) => router.push(`?conversation=${id}`)}
-        onNew={() => router.push('?')}
-      />
       <div className="flex min-w-0 flex-1 flex-col p-4">
         <Conversation className="flex-1">
           <ConversationContent>

@@ -3,7 +3,7 @@ import { DefaultTemplate } from '@payloadcms/ui/rsc'
 import { Gutter } from '@payloadcms/ui'
 import type { AdminViewServerProps } from 'payload'
 import type { User } from '@/payload-types'
-import { listConversations, loadConversationBySession } from '../../eve/conversations'
+import { loadConversationBySession } from '../../eve/conversations'
 import { EveChat } from './EveChat'
 
 /**
@@ -31,8 +31,6 @@ export const EveView: React.FC<AdminViewServerProps> = async ({
 
   const activeId =
     typeof searchParams?.conversation === 'string' ? searchParams.conversation : undefined
-
-  const conversations = user ? await listConversations(req.payload, user) : []
 
   const activeRow =
     user && activeId ? await loadConversationBySession(req.payload, activeId, user) : null
@@ -63,10 +61,6 @@ export const EveView: React.FC<AdminViewServerProps> = async ({
         // and the wrong (or empty) thread is shown.
         <EveChat
           key={activeId ?? 'new'}
-          conversations={conversations.map((c) => ({
-            id: c.eveSessionId ?? String(c.id),
-            title: c.title ?? 'Untitled',
-          }))}
           activeId={activeId}
           initialSession={initialSession}
           voiceAvailable={!!process.env.DEEPGRAM_API_KEY}

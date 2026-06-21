@@ -106,4 +106,46 @@ describe('ToolResultCard', () => {
     expect(screen.getByText('Outline the article')).toBeTruthy()
     expect(screen.getByText('Write the draft')).toBeTruthy()
   })
+
+  it('renders a media_image card with inline image and admin link', () => {
+    const { container } = render(
+      <ToolResultCard
+        part={part({
+          state: 'output-available',
+          toolName: 'connection__payload-mcp__generateImage',
+          toolMetadata: { eve: { kind: 'tool-call', name: 'connection__payload-mcp__generateImage' } },
+          input: { prompt: 'hero', alt: 'A hero image', aspectRatio: '16:9' },
+          output: {
+            content: [{ type: 'text', text: 'Generated image saved to Media (id: img-42). Embed in Markdown as: ![media:img-42]()' }],
+            structuredContent: { id: 'img-42', url: '/media/hero.png', alt: 'A hero image' },
+          },
+        })}
+      />,
+    )
+    // Inline image
+    const img = container.querySelector('img') as HTMLImageElement
+    expect(img).toBeTruthy()
+    expect(img.getAttribute('src')).toBe('/media/hero.png')
+    expect(img.getAttribute('alt')).toBe('A hero image')
+    // Admin link
+    const link = screen.getByRole('link', { name: /View in admin/ }) as HTMLAnchorElement
+    expect(link.getAttribute('href')).toBe('/admin/collections/media/img-42')
+    // No JSON dump
+    expect(container.textContent).not.toContain('structuredContent')
+    expect(container.querySelector('pre')).toBeNull()
+  })
+
+  it('shows generating label while generateImage runs', () => {
+    render(
+      <ToolResultCard
+        part={part({
+          state: 'input-available',
+          toolName: 'connection__payload-mcp__generateImage',
+          toolMetadata: { eve: { kind: 'tool-call', name: 'connection__payload-mcp__generateImage' } },
+          input: { prompt: 'hero', alt: 'A hero', aspectRatio: '16:9' },
+        })}
+      />,
+    )
+    expect(screen.getByText('Generating image…')).toBeTruthy()
+  })
 })

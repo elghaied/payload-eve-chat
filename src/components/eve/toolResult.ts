@@ -271,6 +271,7 @@ export function runningLabel(part: EveDynamicToolPart): string {
     const url = isObj(input) && typeof input['url'] === 'string' ? hostOf(input['url']) : ''
     return url ? `Reading ${url}…` : 'Reading page…'
   }
+  if (name === 'generateImage') return 'Generating image…'
   const titleish =
     isObj(input) && isObj(input['data']) && typeof (input['data'] as AnyRecord)['title'] === 'string'
       ? ` “${(input['data'] as AnyRecord)['title'] as string}”`

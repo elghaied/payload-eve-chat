@@ -13,6 +13,8 @@ import { Tasks } from './collections/demo/Tasks'
 import { Conversations } from './collections/Conversations'
 import { createDocumentFromMarkdownTool } from './eve/markdown-tool'
 import { generateImageTool } from './eve/generate-image-tool'
+import { searchPhotosTool } from './eve/unsplash-search-tool'
+import { addPhotoToMediaTool } from './eve/unsplash-add-tool'
 
 const filename = fileURLToPath(import.meta.url)
 const dirname = path.dirname(filename)
@@ -87,6 +89,9 @@ export default buildConfig({
       tools: {
         createDocumentFromMarkdown: createDocumentFromMarkdownTool,
         generateImage: generateImageTool,
+        ...(process.env.UNSPLASH_ACCESS_KEY
+          ? { searchPhotos: searchPhotosTool, addPhotoToMedia: addPhotoToMediaTool }
+          : {}),
       },
       // In development, bypass API key auth so the endpoint is reachable without
       // credentials. Grant exactly the items the plugin registered (i.e. the enabled

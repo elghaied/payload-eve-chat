@@ -11,6 +11,14 @@ export const Media: CollectionConfig = {
       type: 'text',
       required: true,
     },
+    {
+      name: 'credit',
+      type: 'text',
+    },
+    {
+      name: 'creditUrl',
+      type: 'text',
+    },
   ],
   upload: true,
   // v4 enables versions by default; media uploads don't need version history.

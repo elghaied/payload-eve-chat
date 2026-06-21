@@ -351,6 +351,127 @@ describe('media_image detection', () => {
   })
 })
 
+describe('describeToolResult — searchPhotos', () => {
+  it('parses a searchPhotos result into photo_search view', () => {
+    const v = describeToolResult(
+      part({
+        state: 'output-available',
+        toolName: 'connection__payload-mcp__searchPhotos',
+        toolMetadata: { eve: { kind: 'tool-call', name: 'connection__payload-mcp__searchPhotos' } },
+        input: { query: 'mountain lake', perPage: 6 },
+        output: {
+          content: [{ type: 'text', text: 'Found 2 Unsplash photos for "mountain lake".' }],
+          structuredContent: {
+            photos: [
+              { photoId: 'abc', description: 'lake at dusk', thumbUrl: 'https://images.unsplash.com/thumb1', photographer: 'Jane', photographerUrl: 'https://unsplash.com/@jane?utm_source=payload-eve-chat&utm_medium=referral', unsplashUrl: 'https://unsplash.com/photos/abc' },
+              { photoId: 'def', description: 'misty peaks', thumbUrl: 'https://images.unsplash.com/thumb2', photographer: 'Bob', photographerUrl: 'https://unsplash.com/@bob?utm_source=payload-eve-chat&utm_medium=referral', unsplashUrl: 'https://unsplash.com/photos/def' },
+            ],
+          },
+        },
+      }),
+    )
+    expect(v?.kind).toBe('photo_search')
+    if (v?.kind === 'photo_search') {
+      expect(v.photos).toHaveLength(2)
+      expect(v.photos[0]!.photoId).toBe('abc')
+      expect(v.photos[1]!.photographer).toBe('Bob')
+      expect(v.query).toBe('mountain lake')
+    }
+  })
+
+  it('returns photo_search with empty photos array when results is empty', () => {
+    const v = describeToolResult(
+      part({
+        state: 'output-available',
+        toolName: 'searchPhotos',
+        input: { query: 'nothing found' },
+        output: {
+          content: [{ type: 'text', text: 'Found 0 Unsplash photos for "nothing found".' }],
+          structuredContent: { photos: [] },
+        },
+      }),
+    )
+    expect(v?.kind).toBe('photo_search')
+    if (v?.kind === 'photo_search') {
+      expect(v.photos).toHaveLength(0)
+    }
+  })
+
+  // Extension test: 'query' defaults to '' when part.input does not contain a string query.
+  // This covers the case where a consumer omits query or passes a non-string value.
+  it('returns photo_search with query="" when input.query is absent', () => {
+    const v = describeToolResult(
+      part({
+        state: 'output-available',
+        toolName: 'searchPhotos',
+        input: {},  // no query field
+        output: {
+          content: [{ type: 'text', text: 'Found 0.' }],
+          structuredContent: { photos: [] },
+        },
+      }),
+    )
+    expect(v?.kind).toBe('photo_search')
+    if (v?.kind === 'photo_search') {
+      expect(v.query).toBe('')
+      expect(v.photos).toHaveLength(0)
+    }
+  })
+})
+
+describe('describeToolResult — addPhotoToMedia / media_image with credit', () => {
+  it('parses addPhotoToMedia result into media_image with credit and creditUrl', () => {
+    const v = describeToolResult(
+      part({
+        state: 'output-available',
+        toolName: 'connection__payload-mcp__addPhotoToMedia',
+        toolMetadata: { eve: { kind: 'tool-call', name: 'connection__payload-mcp__addPhotoToMedia' } },
+        input: { photoId: 'abc', alt: 'mountain lake' },
+        output: {
+          content: [{ type: 'text', text: 'Saved photo by Jane Doe to Media (id: media-1).' }],
+          structuredContent: { id: 'media-1', url: '/media/unsplash-abc.jpg', alt: 'mountain lake', credit: 'Jane Doe', creditUrl: 'https://unsplash.com/@janedoe?utm_source=payload-eve-chat&utm_medium=referral' },
+        },
+      }),
+    )
+    expect(v?.kind).toBe('media_image')
+    if (v?.kind === 'media_image') {
+      expect(v.id).toBe('media-1')
+      expect(v.url).toBe('/media/unsplash-abc.jpg')
+      expect(v.alt).toBe('mountain lake')
+      expect(v.credit).toBe('Jane Doe')
+      expect(v.creditUrl).toContain('utm_source=payload-eve-chat')
+    }
+  })
+
+  it('media_image from generateImage has no credit/creditUrl (backward-compat)', () => {
+    const v = describeToolResult(
+      part({
+        state: 'output-available',
+        toolName: 'generateImage',
+        input: { prompt: 'hero', alt: 'hero image' },
+        output: { content: [{ type: 'text', text: 'done' }], structuredContent: { id: 'img-1', url: '/media/hero.png', alt: 'hero image' } },
+      }),
+    )
+    expect(v?.kind).toBe('media_image')
+    if (v?.kind === 'media_image') {
+      expect(v.credit).toBeUndefined()
+      expect(v.creditUrl).toBeUndefined()
+    }
+  })
+})
+
+describe('runningLabel — Unsplash tools', () => {
+  it('shows "Searching Unsplash…" for searchPhotos', () => {
+    const label = runningLabel(part({ state: 'input-available', toolName: 'searchPhotos', input: { query: 'cats' } }))
+    expect(label).toBe('Searching Unsplash…')
+  })
+
+  it('shows "Saving photo to Media…" for addPhotoToMedia', () => {
+    const label = runningLabel(part({ state: 'input-available', toolName: 'addPhotoToMedia', input: { photoId: 'abc', alt: 'x' } }))
+    expect(label).toBe('Saving photo to Media…')
+  })
+})
+
 describe('parseJsonBlock', () => {
   it('parseJsonBlock extracts JSON from a fenced block', () => {
     const text = 'Here is the result:\n```json\n{"id":"1","title":"A"}\n```\nDone.'

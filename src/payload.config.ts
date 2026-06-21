@@ -12,6 +12,7 @@ import { Posts } from './collections/demo/Posts'
 import { Tasks } from './collections/demo/Tasks'
 import { Conversations } from './collections/Conversations'
 import { createDocumentFromMarkdownTool } from './eve/markdown-tool'
+import { generateImageTool } from './eve/generate-image-tool'
 
 const filename = fileURLToPath(import.meta.url)
 const dirname = path.dirname(filename)
@@ -66,7 +67,14 @@ export default buildConfig({
           tools: { find: false, create: false, update: false, delete: false, getCollectionSchema: false },
         },
         media: {
-          tools: { find: false, create: false, update: false, delete: false, getCollectionSchema: false },
+          description:
+            'Uploaded images. Use findDocuments to list existing images for reuse. ' +
+            'To generate a new image, use the generateImage tool instead.',
+          // find + getCollectionSchema remain enabled (default on) so the agent can
+          // browse and reuse existing uploads. Generic create/update/delete are off:
+          // image creation goes through the generateImage tool which enforces the
+          // gateway → Buffer → Media.create path with correct mimetype and alt text.
+          tools: { create: false, update: false, delete: false },
         },
         conversations: {
           tools: { find: false, create: false, update: false, delete: false, getCollectionSchema: false },
@@ -78,6 +86,7 @@ export default buildConfig({
       // collection — see ALLOWED_COLLECTIONS in src/eve/markdown-tool.ts.
       tools: {
         createDocumentFromMarkdown: createDocumentFromMarkdownTool,
+        generateImage: generateImageTool,
       },
       // In development, bypass API key auth so the endpoint is reachable without
       // credentials. Grant exactly the items the plugin registered (i.e. the enabled

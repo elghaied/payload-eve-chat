@@ -89,6 +89,14 @@ describe('article-writing skill', () => {
     expect(m![1]).toBe('media')
     expect(m![2]).toBe('abc123')
   })
+
+  it('uses generateImage (not generateHeroImage) as the tool name', () => {
+    const raw = readSkill()
+    // C1 regression guard: the registered MCP tool is `generateImage`.
+    // `generateHeroImage` was a wrong name that appeared in earlier drafts.
+    expect(raw).toContain('generateImage')
+    expect(raw).not.toContain('generateHeroImage')
+  })
 })
 
 describe('agent/instructions.md trim', () => {

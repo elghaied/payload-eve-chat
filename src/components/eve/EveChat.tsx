@@ -278,7 +278,24 @@ const EveChatInner: React.FC<EveChatProps & { initialEvents: unknown[]; voiceAva
   // In-flight guard so a rapid double-submit can't start two sends (which could
   // race two new-session creates / duplicate sidebar entries).
   const sendingRef = useRef(false)
-  const pendingFileQueue = useRef<FileUIPart[][]>([])
+  /**
+   * Map from confirmed-user-message index → files shown in the post-send bubble.
+   *
+   * Key: the zero-based ordinal of the *confirmed* (non-optimistic) user message at
+   * the time of submission. Computed at submit time as:
+   *   agent.data.messages.filter(m => m.role === 'user' && !m.metadata?.optimistic).length
+   * (i.e. "how many confirmed user messages existed before this turn started").
+   *
+   * In the render loop: count confirmed (non-optimistic) user messages with a
+   * dedicated counter, and look up `pendingFileMap.current.get(counter++)`.
+   * Text-only turns do not push to this map, so their confirmed-message slots return
+   * undefined → no preview, which is correct.
+   *
+   * This replaces the old dense-array approach that used `userMsgIndex++` over ALL
+   * user messages: that counter desynced after any text-only turn because the array
+   * was only pushed for file-bearing turns.
+   */
+  const pendingFileMap = useRef<Map<number, FileUIPart[]>>(new Map())
   // Attachment error for inline notice below the composer.
   const [attachError, setAttachError] = useState<string | null>(null)
   const [attachmentCount, setAttachmentCount] = useState(0)
@@ -393,7 +410,14 @@ const EveChatInner: React.FC<EveChatProps & { initialEvents: unknown[]; voiceAva
           sendingRef.current = false
           return
         }
-        pendingFileQueue.current.push(message.files)
+        // Key = number of confirmed (non-optimistic) user messages already in the list.
+        // This equals the zero-based index of the confirmed user message that WILL be
+        // added for this turn. Text-only turns do NOT push to this map, so their slots
+        // return undefined in the render loop (no preview shown — correct).
+        const confirmedUserMsgCount = agent.data.messages.filter(
+          (m) => m.role === 'user' && !m.metadata?.optimistic,
+        ).length
+        pendingFileMap.current.set(confirmedUserMsgCount, message.files)
       } else {
         userContent = text as string
       }
@@ -463,7 +487,9 @@ const EveChatInner: React.FC<EveChatProps & { initialEvents: unknown[]; voiceAva
                 description="Ask Eve to create a post or manage your tasks."
               />
             ) : (() => {
-              let userMsgIndex = 0
+              // Count confirmed (non-optimistic) user messages as we iterate so each one
+              // maps to the same zero-based index used as the key in pendingFileMap.
+              let confirmedUserIdx = 0
               return agent.data.messages.map((m, index) => {
                 const messageKey = m.id || `message-${index}`
                 return (
@@ -502,9 +528,12 @@ const EveChatInner: React.FC<EveChatProps & { initialEvents: unknown[]; voiceAva
                         // step-start: no visible output
                         return null
                       })}
-                      {m.role === 'user' && (() => {
-                        const idx = userMsgIndex++
-                        const files = pendingFileQueue.current[idx]
+                      {m.role === 'user' && !m.metadata?.optimistic && (() => {
+                        // Each confirmed user message gets the next index.
+                        // pendingFileMap only has entries for file-bearing turns,
+                        // so text-only turns return undefined → no preview.
+                        const idx = confirmedUserIdx++
+                        const files = pendingFileMap.current.get(idx)
                         if (!files?.length) return null
                         return (
                           <div className="mt-1 flex flex-wrap gap-1">

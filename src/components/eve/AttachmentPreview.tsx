@@ -42,7 +42,7 @@ export function AttachmentPreview({ file, onRemove, className }: AttachmentPrevi
           onClick={() => onRemove(file)}
           className="absolute -right-1.5 -top-1.5 flex size-4 items-center justify-center rounded-full bg-foreground text-background shadow-sm hover:bg-destructive hover:text-destructive-foreground"
         >
-          <XIcon className="size-2.5" />
+          <XIcon className="size-2.5" aria-hidden="true" />
         </button>
       )}
     </div>

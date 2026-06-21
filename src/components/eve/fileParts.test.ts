@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { FileUIPart } from 'ai'
 
 // ---- Fixtures ----
@@ -16,16 +16,18 @@ function makeFile(overrides: Partial<FileUIPart> = {}): FileUIPart {
   }
 }
 
-// ---- Mock fetch to return fixture bytes ----
+// ---- Mock fetch to return fixture bytes (re-stubbed before each test) ----
 
-vi.stubGlobal('fetch', async (url: string) => {
-  const isJpeg = url.includes('jpeg') || url.includes('photo')
-  const bytes = isJpeg ? jpegBytes : pngBytes
-  return {
-    ok: true,
-    arrayBuffer: async () => bytes.buffer,
-  } as Response
-})
+function makeDefaultFetchStub() {
+  vi.stubGlobal('fetch', async (url: string) => {
+    const isJpeg = url.includes('jpeg') || url.includes('photo')
+    const bytes = isJpeg ? jpegBytes : pngBytes
+    return {
+      ok: true,
+      arrayBuffer: async () => bytes.buffer,
+    } as Response
+  })
+}
 
 // ---- Mock eve/client so test stays unit-level ----
 
@@ -40,6 +42,9 @@ vi.mock('eve/client', () => ({
 }))
 
 import { buildUserContent } from './fileParts'
+
+beforeEach(() => makeDefaultFetchStub())
+afterEach(() => vi.unstubAllGlobals())
 
 describe('buildUserContent', () => {
   it('returns [textPart, filePart] for single image + text', async () => {

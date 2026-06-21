@@ -48,7 +48,7 @@ function callHandler(
 describe('generateImageHandler', () => {
   beforeEach(() => {
     vi.mocked(mockGenerateImage).mockResolvedValue({
-      image: { uint8Array: FAKE_BYTES, base64: '' },
+      image: { uint8Array: FAKE_BYTES, base64: '', mediaType: 'image/png' },
       images: [],
       warnings: [],
     } as unknown as Awaited<ReturnType<typeof mockGenerateImage>>)
@@ -85,6 +85,47 @@ describe('generateImageHandler', () => {
           size: expect.any(Number),
         }),
         overrideAccess: true,
+      }),
+    )
+  })
+
+  it('derives mimetype and extension from model mediaType (I1)', async () => {
+    // Simulate a model returning image/webp instead of image/png
+    vi.mocked(mockGenerateImage).mockResolvedValueOnce({
+      image: { uint8Array: FAKE_BYTES, base64: '', mediaType: 'image/webp' },
+      images: [],
+      warnings: [],
+    } as unknown as Awaited<ReturnType<typeof mockGenerateImage>>)
+
+    const req = makeReq({ id: 'media-w', url: '/media/hero-w.webp', alt: 'webp alt' })
+    await callHandler({ prompt: 'webp test', alt: 'webp alt' }, req, makeAuthorizedMCP())
+
+    expect(req.payload.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        file: expect.objectContaining({
+          mimetype: 'image/webp',
+          name: expect.stringMatching(/\.webp$/),
+        }),
+      }),
+    )
+  })
+
+  it('falls back to image/png when mediaType is undefined (I1)', async () => {
+    vi.mocked(mockGenerateImage).mockResolvedValueOnce({
+      image: { uint8Array: FAKE_BYTES, base64: '', mediaType: undefined },
+      images: [],
+      warnings: [],
+    } as unknown as Awaited<ReturnType<typeof mockGenerateImage>>)
+
+    const req = makeReq({ id: 'media-fb', url: '/media/hero-fb.png', alt: 'fallback alt' })
+    await callHandler({ prompt: 'fallback test', alt: 'fallback alt' }, req, makeAuthorizedMCP())
+
+    expect(req.payload.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        file: expect.objectContaining({
+          mimetype: 'image/png',
+          name: expect.stringMatching(/\.png$/),
+        }),
       }),
     )
   })

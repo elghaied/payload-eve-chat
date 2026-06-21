@@ -8,7 +8,8 @@ import { createDataUrlFilePart } from 'eve/client'
  * Each file is fetched (data URL → ArrayBuffer → Uint8Array) and converted to a
  * FilePart via createDataUrlFilePart from 'eve/client'. Files that fail to convert
  * are skipped with a console.warn. If all files fail and text is also empty, returns
- * an empty array (caller must guard against sending nothing).
+ * [{type:'text',text:''}] — the caller's empty-turn guard detects this exact shape
+ * and aborts the send before it reaches the AI Gateway.
  */
 export async function buildUserContent(
   text: string,
@@ -20,6 +21,7 @@ export async function buildUserContent(
   for (const f of files) {
     try {
       const res = await fetch(f.url)
+      if (!res.ok) throw new Error(`fetch failed: ${res.status}`)
       const buf = await res.arrayBuffer()
       fileParts.push(
         createDataUrlFilePart({

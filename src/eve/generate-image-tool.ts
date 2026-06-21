@@ -30,12 +30,23 @@ export async function generateImageHandler({
   })
 
   const buf = Buffer.from(result.image.uint8Array)
-  const name = `hero-${Date.now()}.png`
+  // Use the model-reported mediaType so non-Imagen models (e.g. xai/grok-imagine-image) store
+  // with the correct MIME type and file extension rather than always assuming PNG.
+  const mediaType = result.image.mediaType ?? 'image/png'
+  const extMap: Record<string, string> = {
+    'image/png': 'png',
+    'image/jpeg': 'jpg',
+    'image/jpg': 'jpg',
+    'image/webp': 'webp',
+    'image/gif': 'gif',
+  }
+  const ext = extMap[mediaType] ?? 'png'
+  const name = `hero-${Date.now()}.${ext}`
 
   const doc = await req.payload.create({
     collection: 'media',
     data: { alt: input.alt } as never,
-    file: { data: buf, mimetype: 'image/png', name, size: buf.length },
+    file: { data: buf, mimetype: mediaType, name, size: buf.length },
     overrideAccess: authorizedMCP.overrideAccess,
     user: authorizedMCP.user,
     req,

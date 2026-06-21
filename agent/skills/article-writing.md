@@ -1,7 +1,7 @@
 ---
 description: |
   Use when writing or drafting an article or blog post — including choosing heading levels,
-  inserting images or hero images (with a media ID from generateHeroImage), using checklists,
+  inserting images or hero images (with a media ID from generateImage), using checklists,
   blockquotes, or other rich formatting — or managing the draft/approve/publish workflow for posts.
 ---
 
@@ -15,7 +15,7 @@ description: |
    or tell me what to change."_ Revise inline if the user requests edits; ask again after each
    revision.
 3. **On approval** (user says "approve", "yes", "create it", "looks good", etc.):
-   - If a hero image was requested and not yet generated, call `generateHeroImage` first (see §4).
+   - If a hero image was requested and not yet generated, call `generateImage` first (see §4).
    - Call `createDocumentFromMarkdown` with `collectionSlug: "posts"`, `data: { title, status: "draft" }`,
      and `markdown: { content: "<the article body you already wrote>" }`.
    - Confirm with: _"Saved as a draft. Reply 'publish' to make it live."_
@@ -76,7 +76,7 @@ embedded image block in the editor, not a plain `<img>` tag. Standard Markdown i
 
 **Do not guess or fabricate a media id.** Always obtain the id from a tool call:
 
-- Hero image: call `generateHeroImage` (SP-B tool, available over `payload-mcp`). It returns
+- Hero image: call `generateImage` (SP-B tool, available over `payload-mcp`). It returns
   `{ id, url }`. Use the `id` to build the placeholder.
 - Existing Media: call `findDocuments` with `collectionSlug: "media"` to locate an existing upload.
 
@@ -112,16 +112,16 @@ Next paragraph.
 
 Apply this heuristic:
 
-- The user explicitly requests an image or hero → always call `generateHeroImage`.
+- The user explicitly requests an image or hero → always call `generateImage`.
 - The user asks for a "full article" or "complete post" without specifying images → ask once:
   _"Should I generate a hero image for this article?"_ Then proceed based on the answer.
 - The user asks for a quick draft, note, or checklist → no image unless asked.
 
-If generating a hero image: call `generateHeroImage` (SP-B) before calling
+If generating a hero image: call `generateImage` (SP-B) before calling
 `createDocumentFromMarkdown`, and embed the returned `id` in the placeholder. Tool call sequence:
 
 ```
-1. generateHeroImage({ prompt: "<article topic> hero image, ..." })
+1. generateImage({ prompt: "<article topic> hero image, ...", alt: "<brief descriptive alt text>" })
    → { id: "abc123", url: "https://..." }
 2. createDocumentFromMarkdown({
      collectionSlug: "posts",
@@ -151,7 +151,7 @@ A well-structured Lexical article:
 | `createDocumentFromMarkdown` | Create a Post: converts `markdown.content` (Markdown string) to Lexical, merges with `data` fields |
 | `updateDocument` | Flip `status` from `"draft"` to `"published"` (pass `id` + `data: { status: "published" }`) |
 | `findDocuments` | Look up existing posts or media by query |
-| `generateHeroImage` *(SP-B)* | Generate an image, save to Payload Media, return `{ id, url }` |
+| `generateImage` *(SP-B)* | Generate an image, save to Payload Media, return `{ id, url }`. **Required inputs:** `prompt` (string) and `alt` (string, non-empty). |
 
 MCP tool names arrive prefixed (`connection__payload-mcp__<tool>`). You call them by their short
 name through the connection — the framework resolves the prefix.
@@ -161,7 +161,7 @@ name through the connection — the framework resolves the prefix.
 - This skill adds instructions only. Do not define new tools here.
 - Agent code in `agent/` cannot import from `src/`. All Payload writes and image generation are
   handled by custom MCP tools in `src/eve/` called over the `payload-mcp` connection.
-- Keep `generateHeroImage` calls out of unit tests (they bill AI Gateway credits). Test the skill
+- Keep `generateImage` calls out of unit tests (they bill AI Gateway credits). Test the skill
   text only (see §8 in the spec).
-- `generateHeroImage` tool output is `{ id, url }` only — never raw bytes or base64 — to keep the
+- `generateImage` tool output is `{ id, url }` only — never raw bytes or base64 — to keep the
   model context small.

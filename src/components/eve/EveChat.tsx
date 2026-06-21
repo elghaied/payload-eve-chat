@@ -32,7 +32,7 @@ import { Reasoning } from '@/components/ai-elements/reasoning'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { dispatchConversationCreated } from './ConversationHistoryPanel'
 import { InputRequestCard } from './InputRequestCard'
-import { ThinkingIndicator, ErrorNotice } from './ChatStatus'
+import { ThinkingIndicator, ErrorNotice, showWorkingIndicator } from './ChatStatus'
 import { getPendingInput, type InputResponseValue } from './inputRequest'
 import { VoiceButton } from './VoiceButton'
 import { useVoice } from './useVoice'
@@ -243,8 +243,11 @@ export const EveChat: React.FC<EveChatProps> = (props) => {
  */
 function PreSendAttachmentStrip({
   onCountChange,
+  registerClear,
 }: {
   onCountChange: (count: number) => void
+  /** Hand the parent a stable way to clear the strip optimistically on submit. */
+  registerClear: (clear: () => void) => void
 }): React.ReactElement | null {
   const attachments = usePromptInputAttachments()
   const count = attachments.files.length
@@ -253,6 +256,15 @@ function PreSendAttachmentStrip({
   React.useEffect(() => {
     onCountChange(count)
   }, [count, onCountChange])
+
+  // Expose the attachment clear() to EveChat so it can wipe the strip the moment the message
+  // is sent (the files are already captured into message.files by the form before onSubmit
+  // runs). Without this, PromptInput only clears after our onSubmit promise resolves — which
+  // is at turn-end — so the chip lingered for the whole turn.
+  const clear = attachments.clear
+  React.useEffect(() => {
+    registerClear(clear)
+  }, [registerClear, clear])
 
   if (count === 0) return null
 
@@ -286,6 +298,12 @@ const EveChatInner: React.FC<EveChatProps & { initialEvents: unknown[]; voiceAva
   // In-flight guard so a rapid double-submit can't start two sends (which could
   // race two new-session creates / duplicate sidebar entries).
   const sendingRef = useRef(false)
+  // Clear handle for the composer's attachment strip, wired up by PreSendAttachmentStrip,
+  // so handleSubmit can wipe the chips the moment the message is sent.
+  const clearAttachmentsRef = useRef<(() => void) | null>(null)
+  const registerClearAttachments = useCallback((clear: () => void) => {
+    clearAttachmentsRef.current = clear
+  }, [])
   /**
    * Map from confirmed-user-message index → files shown in the post-send bubble.
    *
@@ -413,6 +431,10 @@ const EveChatInner: React.FC<EveChatProps & { initialEvents: unknown[]; voiceAva
     setInput('')
     setAttachError(null)
     setStalled(false)
+    // Optimistically clear the attachment strip now — the form already captured the files into
+    // message.files, so this only wipes the visible chips (and frees their object URLs). The
+    // form's own clear() runs after our onSubmit promise resolves (turn-end), too late.
+    clearAttachmentsRef.current?.()
 
     const isNew = !activeId && !agent.session.sessionId
     // Capture the first user message as the title for a new thread (prefer text; fallback for file-only).
@@ -577,7 +599,9 @@ const EveChatInner: React.FC<EveChatProps & { initialEvents: unknown[]; voiceAva
                 )
               })
             })()}
-            {agent.status === 'submitted' && !stalled && <ThinkingIndicator />}
+            {showWorkingIndicator({ status: agent.status, stalled, messages: agent.data.messages }) && (
+              <ThinkingIndicator />
+            )}
             {agent.status === 'error' && (
               <ErrorNotice message={agent.error?.message} onRetry={handleRetry} />
             )}
@@ -599,7 +623,10 @@ const EveChatInner: React.FC<EveChatProps & { initialEvents: unknown[]; voiceAva
           onError={(err) => setAttachError(err.message)}
           className="mt-3"
         >
-          <PreSendAttachmentStrip onCountChange={setAttachmentCount} />
+          <PreSendAttachmentStrip
+            onCountChange={setAttachmentCount}
+            registerClear={registerClearAttachments}
+          />
           <PromptInputTextarea
             value={input}
             placeholder="Message Eve…"

@@ -27,8 +27,9 @@ voice, Eve's built-in web search) so it deploys to Vercel with no Docker/self-ho
   returns its id so Eve can embed it in an article as a hero/inline image — `![media:<id>]()`
   converts to a real Lexical upload node. Override with `EVE_IMAGE_MODEL`.
 - **Real photos from Unsplash** — the `searchPhotos` MCP tool returns a thumbnail grid of real
-  photographs; `addPhotoToMedia` downloads the chosen photo into Media with photographer credit.
-  Eve can embed it in an article via `![media:<id>]()` with a mandatory
+  photographs; you multi-select photos in the grid and click "Add selected", and `addPhotosToMedia`
+  downloads them into Media (in one batch) with photographer credit. Eve can embed them in an
+  article via `![media:<id>]()` with a mandatory
   `_Photo by [Name](url) on Unsplash_` caption. Requires `UNSPLASH_ACCESS_KEY` (free; 50 req/hr on
   demo tier). Attribution and the ToS download trigger are handled automatically.
 - **Attach files to chat** — drop **images or PDFs** into the composer and Eve reads them
@@ -113,7 +114,7 @@ stable Payload `3.85.1` version is preserved on the **`v3`** branch.
    - `UNSPLASH_ACCESS_KEY` — optional, enables real-photo search via Unsplash. Create a free app at
      <https://unsplash.com/oauth/applications> and copy the **Access Key** (Client-ID public auth —
      no secret needed). Demo tier allows **50 requests/hour**. When unset, the `searchPhotos` and
-     `addPhotoToMedia` tools are simply not offered. Attribution (photographer credit stored on
+     `addPhotosToMedia` tools are simply not offered. Attribution (photographer credit stored on
      Media and included in the article) and the Unsplash ToS download trigger are handled
      automatically.
 3. `pnpm install && pnpm devsafe` — installs deps and starts the dev server. `devsafe` clears the

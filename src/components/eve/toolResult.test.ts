@@ -419,27 +419,33 @@ describe('describeToolResult — searchPhotos', () => {
   })
 })
 
-describe('describeToolResult — addPhotoToMedia / media_image with credit', () => {
-  it('parses addPhotoToMedia result into media_image with credit and creditUrl', () => {
+describe('describeToolResult — addPhotosToMedia / media_images with credit', () => {
+  it('parses a single-photo addPhotosToMedia result into media_images with credit and creditUrl', () => {
+    // Unsplash photos always go through the batch tool now, even a single one (array of one).
     const v = describeToolResult(
       part({
         state: 'output-available',
-        toolName: 'connection__payload-mcp__addPhotoToMedia',
-        toolMetadata: { eve: { kind: 'tool-call', name: 'connection__payload-mcp__addPhotoToMedia' } },
-        input: { photoId: 'abc', alt: 'mountain lake' },
+        toolName: 'connection__payload-mcp__addPhotosToMedia',
+        toolMetadata: { eve: { kind: 'tool-call', name: 'connection__payload-mcp__addPhotosToMedia' } },
+        input: { photos: [{ photoId: 'abc', alt: 'mountain lake' }] },
         output: {
-          content: [{ type: 'text', text: 'Saved photo by Jane Doe to Media (id: media-1).' }],
-          structuredContent: { id: 'media-1', url: '/media/unsplash-abc.jpg', alt: 'mountain lake', credit: 'Jane Doe', creditUrl: 'https://unsplash.com/@janedoe?utm_source=payload-eve-chat&utm_medium=referral' },
+          content: [{ type: 'text', text: 'Saved 1 photo to Media.' }],
+          structuredContent: {
+            saved: [{ id: 'media-1', url: '/media/unsplash-abc.jpg', alt: 'mountain lake', credit: 'Jane Doe', creditUrl: 'https://unsplash.com/@janedoe?utm_source=payload-eve-chat&utm_medium=referral' }],
+            failed: [],
+          },
         },
       }),
     )
-    expect(v?.kind).toBe('media_image')
-    if (v?.kind === 'media_image') {
-      expect(v.id).toBe('media-1')
-      expect(v.url).toBe('/media/unsplash-abc.jpg')
-      expect(v.alt).toBe('mountain lake')
-      expect(v.credit).toBe('Jane Doe')
-      expect(v.creditUrl).toContain('utm_source=payload-eve-chat')
+    expect(v?.kind).toBe('media_images')
+    if (v?.kind === 'media_images') {
+      expect(v.images).toHaveLength(1)
+      expect(v.images[0].id).toBe('media-1')
+      expect(v.images[0].url).toBe('/media/unsplash-abc.jpg')
+      expect(v.images[0].alt).toBe('mountain lake')
+      expect(v.images[0].credit).toBe('Jane Doe')
+      expect(v.images[0].creditUrl).toContain('utm_source=payload-eve-chat')
+      expect(v.failedCount).toBe(0)
     }
   })
 
@@ -466,9 +472,9 @@ describe('runningLabel — Unsplash tools', () => {
     expect(label).toBe('Searching Unsplash…')
   })
 
-  it('shows "Saving photo to Media…" for addPhotoToMedia', () => {
-    const label = runningLabel(part({ state: 'input-available', toolName: 'addPhotoToMedia', input: { photoId: 'abc', alt: 'x' } }))
-    expect(label).toBe('Saving photo to Media…')
+  it('shows "Saving photos to Media…" for addPhotosToMedia', () => {
+    const label = runningLabel(part({ state: 'input-available', toolName: 'addPhotosToMedia', input: { photos: [{ photoId: 'abc', alt: 'x' }] } }))
+    expect(label).toBe('Saving photos to Media…')
   })
 })
 

@@ -42,15 +42,20 @@ describe('payload.config.ts Unsplash tool registration', () => {
     expect(configSource).toContain('searchPhotosTool')
   })
 
-  it('imports addPhotoToMediaTool from unsplash-add-tool', () => {
-    expect(configSource).toContain("from './eve/unsplash-add-tool'")
-    expect(configSource).toContain('addPhotoToMediaTool')
+  it('imports addPhotosToMediaTool (the single batch tool) from unsplash-add-multi-tool', () => {
+    expect(configSource).toContain("from './eve/unsplash-add-multi-tool'")
+    expect(configSource).toContain('addPhotosToMediaTool')
   })
 
-  it('registers searchPhotos and addPhotoToMedia gated on UNSPLASH_ACCESS_KEY', () => {
+  it('registers searchPhotos and addPhotosToMedia gated on UNSPLASH_ACCESS_KEY', () => {
     expect(configSource).toContain('UNSPLASH_ACCESS_KEY')
     expect(configSource).toContain('searchPhotos: searchPhotosTool')
-    expect(configSource).toContain('addPhotoToMedia: addPhotoToMediaTool')
+    expect(configSource).toContain('addPhotosToMedia: addPhotosToMediaTool')
+  })
+
+  it('does NOT register a separate single-photo addPhotoToMedia tool (consolidated into the batch tool)', () => {
+    expect(configSource).not.toContain('addPhotoToMedia: addPhotoToMediaTool')
+    expect(configSource).not.toContain('addPhotoToMediaTool')
   })
 })
 

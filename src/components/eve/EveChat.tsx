@@ -473,9 +473,9 @@ const EveChatInner: React.FC<EveChatProps & { initialEvents: unknown[]; voiceAva
     [agent],
   )
 
-  // "Add selected" on an Unsplash photo_search card: save ALL chosen photos in ONE turn.
-  // We send one message listing the photoIds so Eve calls addPhotosToMedia once (Eve's loop
-  // is one step per turn, so a single batch tool call — not N calls — keeps it to one turn).
+  // "Add selected" on an Unsplash photo_search card: save ALL chosen photos in one shot.
+  // We send one message listing the photoIds so Eve calls addPhotosToMedia (the single
+  // Unsplash→Media tool, which takes an array) once — one batch call, not N single-add calls.
   const handleAddPhotos = useCallback(
     (photos: { photoId: string; description: string }[]) => {
       if (agent.status === 'submitted' || agent.status === 'streaming') return

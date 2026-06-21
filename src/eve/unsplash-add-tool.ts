@@ -1,6 +1,4 @@
-import { defineTool } from '@payloadcms/plugin-mcp'
 import type { PayloadRequest } from 'payload'
-import { z } from 'zod'
 import { assertUnsplashUrl, getPhoto, triggerDownload } from './unsplash'
 
 const UTM = '?utm_source=payload-eve-chat&utm_medium=referral'
@@ -38,11 +36,11 @@ export type SavePhotoArgs = {
 
 /**
  * Download one Unsplash photo by id and save it to the Media collection with attribution.
- * Shared by addPhotoToMedia (single) and addPhotosToMedia (batch). All the security guards
- * live here: re-fetch the photo server-side, assertUnsplashUrl (https + *.unsplash.com)
- * before fetching, fetch with redirect:'manual' (no off-host bounce), reject non-image /
- * oversize, trigger the Unsplash download event (ToS). Returns a discriminated result so
- * callers can aggregate without throwing.
+ * Used by the addPhotosToMedia tool (which accepts one or more photos and loops this). All
+ * the security guards live here: re-fetch the photo server-side, assertUnsplashUrl (https +
+ * *.unsplash.com) before fetching, fetch with redirect:'manual' (no off-host bounce), reject
+ * non-image / oversize, trigger the Unsplash download event (ToS). Returns a discriminated
+ * result so callers can aggregate without throwing.
  */
 export async function savePhotoToMedia(
   args: SavePhotoArgs,
@@ -130,44 +128,7 @@ export async function savePhotoToMedia(
   }
 }
 
-export async function addPhotoToMediaHandler({
-  authorizedMCP,
-  input,
-  req,
-}: {
-  authorizedMCP: { overrideAccess: boolean; user: unknown }
-  input: { photoId: string; alt: string }
-  req: PayloadRequest
-}) {
-  const result = await savePhotoToMedia({ photoId: input.photoId, alt: input.alt, req, authorizedMCP })
-  if (!result.ok) {
-    return { content: [{ type: 'text' as const, text: result.error }], structuredContent: {} as never, isError: true as const }
-  }
-  return {
-    // Terse confirmation only — the saved-photo card shows the image + credit. Do NOT put the
-    // ![media:<id>]() embed code here: it belongs in the article body, not in a chat message.
-    content: [{ type: 'text' as const, text: `Saved photo by ${result.saved.credit} to Media (id: ${result.saved.id}).` }],
-    structuredContent: result.saved as unknown as Record<string, unknown>,
-  }
-}
-
-/**
- * Payload MCP tool: given an Unsplash photoId (from searchPhotos), fetch the image,
- * trigger the Unsplash download event (ToS), save to Media with photographer attribution.
- * Requires UNSPLASH_ACCESS_KEY. SSRF-guarded (only *.unsplash.com); rejects images > 10 MB.
- *
- * To embed the saved photo, use `![media:<id>]()` ONLY inside the article body via
- * createDocumentFromMarkdown — never print that code as a chat message.
- */
-export const addPhotoToMediaTool = defineTool({
-  description:
-    'Given a single photoId from searchPhotos, download the Unsplash photo and save it to the Payload Media ' +
-    'collection with photographer attribution (credit, creditUrl). Returns the Media document id. To use it, ' +
-    'embed `![media:<id>]()` ONLY inside the article body (createDocumentFromMarkdown) with a caption ' +
-    '`_Photo by [Name](creditUrl) on Unsplash_`. Do NOT print the embed code as a chat message — the saved ' +
-    'photo card already shows the image and credit. Prefer addPhotosToMedia when the user selects multiple photos.',
-  input: z.object({
-    photoId: z.string().min(1).describe('Unsplash photo id returned by searchPhotos.'),
-    alt: z.string().min(1).max(500).describe('Alt text for the saved Media document.'),
-  }),
-}).handler(addPhotoToMediaHandler as never)
+// NOTE: there is intentionally no single-photo MCP tool. Saving photos to Media goes through
+// the one addPhotosToMedia tool (src/eve/unsplash-add-multi-tool.ts), which accepts an array of
+// one or more photos. Registering a second, near-identically named single-add tool caused Eve's
+// fuzzy tool discovery to reuse the singular and call it N times instead of batching.

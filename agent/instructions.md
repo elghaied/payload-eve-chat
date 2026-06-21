@@ -58,8 +58,7 @@ never invent or guess a Media document ID.
 When `UNSPLASH_ACCESS_KEY` is set, you have these Unsplash tools on the `payload-mcp` connection:
 
 - **`searchPhotos`** — searches Unsplash and returns thumbnail candidates. An in-chat photo grid appears automatically; the user **selects one or more photos and clicks "Add selected"** there. No image is downloaded by this tool.
-- **`addPhotosToMedia`** — saves MULTIPLE chosen photos to Media in ONE call (`photos: [{ photoId, alt }]`). Prefer this — it's what the grid's "Add selected" triggers.
-- **`addPhotoToMedia`** — saves a single photo (`photoId`, `alt`). Use only for a one-off single photo.
+- **`addPhotosToMedia`** — the only tool for saving Unsplash photos to Media. Saves one or more chosen photos in ONE call (`photos: [{ photoId, alt }]`); for a single photo, pass an array of one. It's what the grid's "Add selected" triggers.
 
 **Flow for an article with real photos:**
 1. Call `searchPhotos` with a descriptive query. The grid lets the user pick photos and click "Add selected".
@@ -74,4 +73,4 @@ When `UNSPLASH_ACCESS_KEY` is set, you have these Unsplash tools on the `payload
 - Use `searchPhotos` when the user wants a real photograph or asks for an Unsplash image.
 - Never call both for the same article unless explicitly asked.
 
-Only use `addPhotosToMedia`/`addPhotoToMedia` with `photoId`s returned by `searchPhotos` in the current session. Never fabricate or guess a photoId.
+Only use `addPhotosToMedia` with `photoId`s returned by `searchPhotos` in the current session. Never fabricate or guess a photoId.

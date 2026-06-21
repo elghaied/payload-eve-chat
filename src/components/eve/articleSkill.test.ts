@@ -90,3 +90,28 @@ describe('article-writing skill', () => {
     expect(m![2]).toBe('abc123')
   })
 })
+
+describe('agent/instructions.md trim', () => {
+  const INSTRUCTIONS_PATH = resolve(process.cwd(), 'agent/instructions.md')
+
+  function readInstructions(): string {
+    return readFileSync(INSTRUCTIONS_PATH, 'utf-8')
+  }
+
+  it('still mentions creating a post (baseline concept preserved)', () => {
+    const raw = readInstructions()
+    expect(raw.toLowerCase()).toContain('creating a post')
+  })
+
+  it('points to the article-writing skill', () => {
+    const raw = readInstructions()
+    expect(raw).toContain('article-writing')
+  })
+
+  it('no longer contains the full numbered approval steps inline', () => {
+    const raw = readInstructions()
+    expect(raw).not.toContain('When asked to write/draft/create a post or article')
+    expect(raw).not.toContain('End with a short line asking the user to approve')
+    expect(raw).not.toContain('ONLY when the user approves')
+  })
+})

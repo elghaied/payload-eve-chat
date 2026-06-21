@@ -265,8 +265,22 @@ is active, so `payload-types.ts` doesn't drift between dev and prod.
 ### MCP authentication: dev vs production
 
 In **development**, `/api/mcp` requires no API key (a dev-only `overrideAuth` runs as the first
-admin). In **production**, set `MCP_API_KEY` to a Bearer key created in the Payload admin under
-**Settings → Manage API keys**.
+admin) — so MCP "just works" locally. **In production there is no bypass:** every `/api/mcp`
+request must carry a `Bearer` token that matches a key in the **`payload-mcp-api-keys`** collection
+(the token is validated as `HMAC-SHA256(PAYLOAD_SECRET, token)` against a stored row that has a
+user assigned). If this isn't set up, the agent can't discover *any* MCP tools and the chat reports
+*"the connection requires authorization."*
+
+To set it up **in the production admin** (the key must be created there — it's hashed with the
+production `PAYLOAD_SECRET` and stored in the production DB):
+
+1. Open the admin → **top-right account menu → Settings → MCP** (plugin-mcp registers it there via
+   `userMenuSettingsItems`; it is intentionally **not** in the left nav). Or go straight to
+   `/admin/collections/payload-mcp-api-keys` → **Create New**.
+2. Give it a label, **assign your user** (required), leave the access fields at default (all tools
+   allowed), and save. Copy the generated key value (shown once).
+3. Set `MCP_API_KEY` (Production) in Vercel to that exact value and **redeploy**. Don't change
+   `PAYLOAD_SECRET` afterward, or the key's hash stops matching.
 
 ## The Vercel Eve framework
 

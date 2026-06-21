@@ -59,6 +59,23 @@ describe('payload.config.ts Unsplash tool registration', () => {
   })
 })
 
+describe('payload.config.ts sidebar tab registration', () => {
+  it('imports customSidebarTabs from sidebar-tabs', () => {
+    expect(configSource).toContain("from './eve/sidebar-tabs'")
+    expect(configSource).toContain('customSidebarTabs')
+  })
+
+  it('registers the sidebar tabs under admin.components.sidebar', () => {
+    expect(configSource).toContain('sidebar:')
+    expect(configSource).toContain('tabs: customSidebarTabs')
+  })
+
+  it('no longer registers the standalone Eve nav link', () => {
+    expect(configSource).not.toContain('afterNavLinks')
+    expect(configSource).not.toContain('EveNavLink')
+  })
+})
+
 const mediaSource = readFileSync(resolve(process.cwd(), 'src/collections/Media.ts'), 'utf-8')
 
 describe('Media collection credit fields', () => {

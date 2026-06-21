@@ -15,6 +15,7 @@ import { createDocumentFromMarkdownTool } from './eve/markdown-tool'
 import { generateImageTool } from './eve/generate-image-tool'
 import { searchPhotosTool } from './eve/unsplash-search-tool'
 import { addPhotosToMediaTool } from './eve/unsplash-add-multi-tool'
+import { customSidebarTabs } from './eve/sidebar-tabs'
 
 const filename = fileURLToPath(import.meta.url)
 const dirname = path.dirname(filename)
@@ -26,7 +27,9 @@ export default buildConfig({
       baseDir: path.resolve(dirname),
     },
     components: {
-      afterNavLinks: ['/components/eve/EveNavLink#EveNavLink'],
+      sidebar: {
+        tabs: customSidebarTabs,
+      },
       views: {
         eve: {
           Component: '/components/eve/EveView#EveView',

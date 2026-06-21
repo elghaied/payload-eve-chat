@@ -48,6 +48,7 @@ describe('article-writing skill', () => {
       '- [x]',
       '> ',
       '---',
+      '~~',
       '![media:',
       'createDocumentFromMarkdown',
       'updateDocument',

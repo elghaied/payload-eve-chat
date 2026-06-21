@@ -41,6 +41,7 @@ syntax is understood by `convertMarkdownToLexical` (verified against
 | Bold | `**text**` | |
 | Italic | `*text*` or `_text_` | |
 | Inline code | `` `code` `` | |
+| Strikethrough | `~~text~~` | |
 | Unordered list | `- item` | |
 | Ordered list | `1. item` | |
 | Checklist (unchecked) | `- [ ] item` | |

@@ -110,8 +110,13 @@ async function persistSession(opts: {
 // collected events seed useEveAgent's initialEvents so a reopened thread renders
 // its history.
 const REPLAY_TIME_CAP_MS = 15_000
+// The replay stream replays history then STAYS OPEN for new events. We stop once the
+// backlog is drained — i.e. no new event arrives within this idle gap. We deliberately
+// do NOT bound by the persisted streamIndex: that count can be stale (a quick refresh
+// after the last turn) or off by one, which would truncate the final message.
+const REPLAY_IDLE_MS = 1_200
 
-async function replaySessionEvents(sessionId: string, targetCount: number): Promise<unknown[]> {
+async function replaySessionEvents(sessionId: string): Promise<unknown[]> {
   const ac = new AbortController()
   const timer = setTimeout(() => ac.abort(), REPLAY_TIME_CAP_MS)
   const events: unknown[] = []
@@ -124,9 +129,14 @@ async function replaySessionEvents(sessionId: string, targetCount: number): Prom
     const reader = res.body.getReader()
     const decoder = new TextDecoder()
     let buffer = ''
-    // Read NDJSON lines until we've caught up to the stored event count.
-    while (events.length < targetCount) {
-      const { done, value } = await reader.read()
+    // Read NDJSON lines until the historical backlog drains (an idle gap with no new line)
+    // or the hard time cap. Race each read against an idle timer so a still-open stream
+    // doesn't block forever waiting for events that won't come.
+    for (;;) {
+      const idle = new Promise<'idle'>((resolve) => setTimeout(() => resolve('idle'), REPLAY_IDLE_MS))
+      const next = await Promise.race([reader.read(), idle])
+      if (next === 'idle') break
+      const { done, value } = next
       if (done) break
       buffer += decoder.decode(value, { stream: true })
       let nl: number
@@ -139,7 +149,6 @@ async function replaySessionEvents(sessionId: string, targetCount: number): Prom
         } catch {
           // ignore a partial/garbage line
         }
-        if (events.length >= targetCount) break
       }
     }
     await reader.cancel().catch(() => {})
@@ -201,11 +210,9 @@ export const EveChat: React.FC<EveChatProps> = (props) => {
   useEffect(() => {
     if (!needsReplay) return
     let cancelled = false
-    void replaySessionEvents(initialSession!.sessionId!, initialSession!.streamIndex).then(
-      (collected) => {
-        if (!cancelled) setEvents(collected)
-      },
-    )
+    void replaySessionEvents(initialSession!.sessionId!).then((collected) => {
+      if (!cancelled) setEvents(collected)
+    })
     return () => {
       cancelled = true
     }
@@ -306,15 +313,30 @@ const EveChatInner: React.FC<EveChatProps & { initialEvents: unknown[]; voiceAva
   const onSessionChange = useCallback(
     (session: SessionCursor) => {
       if (!session.sessionId) return
-      latestSessionIdRef.current = session.sessionId
+      const sid = session.sessionId
+      const firstSeen = latestSessionIdRef.current !== sid
+      latestSessionIdRef.current = sid
       void persistSession({
-        sessionId: session.sessionId,
+        sessionId: sid,
         continuationToken: session.continuationToken,
         streamIndex: session.streamIndex,
         title: titleRef.current,
       })
+      // Brand-new chat: the moment Eve assigns a session id (mid-turn), surface the thread
+      // in the sidebar AND reflect it in the URL — but via history.replaceState, NOT
+      // router.push. A push triggers an RSC navigation that remounts EveChat (keyed on
+      // activeId in EveView), discarding the in-flight stream and leaving an empty session.
+      if (firstSeen && !activeId) {
+        const title = titleRef.current ?? 'New conversation'
+        setSidebarConversations((prev) =>
+          prev.some((c) => c.id === sid) ? prev : [{ id: sid, title }, ...prev],
+        )
+        if (typeof window !== 'undefined') {
+          window.history.replaceState(null, '', `?conversation=${sid}`)
+        }
+      }
     },
-    [],
+    [activeId],
   )
 
   // Stall watchdog: Eve sets no model-call timeout, so a stalled provider stream (e.g. a
@@ -370,6 +392,11 @@ const EveChatInner: React.FC<EveChatProps & { initialEvents: unknown[]; voiceAva
     assistantMessageId: latestAssistantId,
     onTranscript: (text) => {
       setStalled(false)
+      // Title a brand-new voice chat from the first utterance (handleSubmit does the same
+      // for typed chats); onSessionChange reads titleRef when the session id appears.
+      if (!activeId && !titleRef.current && text.trim()) {
+        titleRef.current = text.trim().slice(0, 80)
+      }
       void agent.send({ message: text, clientContext: VOICE_REPLY_INSTRUCTION })
     },
     onInterrupt: () => {
@@ -425,21 +452,9 @@ const EveChatInner: React.FC<EveChatProps & { initialEvents: unknown[]; voiceAva
     } finally {
       sendingRef.current = false
     }
-
-    // After send resolves for a brand-new chat, push the new sessionId into the URL
-    // so follow-ups persist to the same thread. Read the ref (set by onSessionChange),
-    // not agent.session.sessionId, which is stale in this async closure.
-    if (isNew) {
-      const sid = latestSessionIdRef.current
-      if (sid) {
-        setSidebarConversations((prev) =>
-          prev.some((c) => c.id === sid)
-            ? prev
-            : [{ id: sid, title: titleRef.current ?? (text ?? '[attachment]').slice(0, 80) }, ...prev],
-        )
-        router.push(`?conversation=${sid}`)
-      }
-    }
+    // Note: for a brand-new chat the sidebar entry + URL are set in onSessionChange (the
+    // moment Eve assigns a session id), via history.replaceState — no router.push here,
+    // which would remount EveChat mid-stream and lose the live turn.
   }
 
   // Answer a HITL input request (ask_question / approval) by resuming the turn.

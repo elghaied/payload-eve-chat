@@ -15,6 +15,7 @@ export type ToolResultView =
   | { kind: 'records'; verb: 'Created' | 'Updated' | 'Found'; collection?: string; records: AdminRecord[]; total?: number }
   | { kind: 'discovery'; connection?: string; tools: string[]; count: number }
   | { kind: 'todos'; todos: TodoItem[]; total: number; completed: number }
+  | { kind: 'skill'; name: string }
   | { kind: 'text'; text: string }
   | { kind: 'media_image'; id: string; url: string; alt: string }
   // Last-resort fallback: a clean "✓ <tool>" line — NEVER a raw-JSON dump.
@@ -178,6 +179,14 @@ export function describeToolResult(part: EveDynamicToolPart): ToolResultView | n
     return { kind: 'todos', todos, total, completed }
   }
 
+  // load_skill — Eve's built-in skill loader. Output is the full skill markdown (a string);
+  // show a compact "using skill" line, never the whole body.
+  if (name === 'load_skill') {
+    const skillName =
+      isObj(part.input) && typeof part.input['skill'] === 'string' ? (part.input['skill'] as string) : ''
+    return { kind: 'skill', name: skillName }
+  }
+
   // web_search — our gateway tool returns { answer, sources } | { error }.
   // (Also handle the Anthropic-native array shape as a fallback.)
   if (name === 'web_search') {
@@ -273,6 +282,10 @@ export function runningLabel(part: EveDynamicToolPart): string {
   if (rawName === 'connection_search' || rawName === 'connection__search')
     return 'Finding available tools…'
   if (name === 'todo') return 'Updating the plan…'
+  if (name === 'load_skill') {
+    const skillName = isObj(input) && typeof input['skill'] === 'string' ? (input['skill'] as string) : ''
+    return skillName ? `Loading the ${skillName} skill…` : 'Loading skill…'
+  }
   if (name === 'web_search') return 'Searching the web…'
   if (name === 'web_fetch') {
     const url = isObj(input) && typeof input['url'] === 'string' ? hostOf(input['url']) : ''

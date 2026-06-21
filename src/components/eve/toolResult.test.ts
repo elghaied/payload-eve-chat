@@ -208,6 +208,19 @@ describe('describeToolResult', () => {
     }
   })
 
+  it('renders load_skill as a compact skill view (not the raw skill body)', () => {
+    const v = describeToolResult(
+      part({
+        state: 'output-available',
+        toolName: 'load_skill',
+        toolMetadata: { eve: { kind: 'tool-call', name: 'load_skill' } },
+        input: { skill: 'article-writing' },
+        output: '# Article-Writing Procedure\n\n## 1. Editorial workflow\n... (long body) ...',
+      }),
+    )
+    expect(v).toMatchObject({ kind: 'skill', name: 'article-writing' })
+  })
+
   it('produces a records card for createDocumentFromMarkdown on the real MCP wire (no doc, uses structuredContent)', () => {
     const v = describeToolResult(
       part({

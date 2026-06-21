@@ -15,6 +15,7 @@ import {
   PlugIcon,
   PlusIcon,
   SearchIcon,
+  SparklesIcon,
   XCircleIcon,
 } from 'lucide-react'
 import type { ReactNode } from 'react'
@@ -196,6 +197,14 @@ function ResultBody({ view }: { view: ToolResultView }) {
     )
   }
 
+  if (view.kind === 'skill') {
+    return (
+      <span>
+        Using the <span className="font-medium">{view.name || 'requested'}</span> skill
+      </span>
+    )
+  }
+
   if (view.kind === 'text') {
     return <p className="whitespace-pre-wrap text-muted-foreground">{view.text}</p>
   }
@@ -261,6 +270,8 @@ function iconFor(view: ToolResultView): ReactNode {
       return <ImageIcon className="size-4 text-purple-600" />
     case 'discovery':
       return <PlugIcon className="size-4" />
+    case 'skill':
+      return <SparklesIcon className="size-4 text-amber-600" />
     case 'todos':
       return <ListChecksIcon className="size-4" />
     case 'records':

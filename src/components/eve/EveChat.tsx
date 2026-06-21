@@ -1,6 +1,5 @@
 'use client'
 import React, { useCallback, useEffect, useRef, useState } from 'react'
-import { useRouter } from '@payloadcms/ui'
 import { useEveAgent } from 'eve/react'
 import type { EveDynamicToolPart } from 'eve/react'
 import { PaperclipIcon, SquareIcon } from 'lucide-react'
@@ -280,7 +279,6 @@ const EveChatInner: React.FC<EveChatProps & { initialEvents: unknown[]; voiceAva
   initialEvents,
   voiceAvailable,
 }) => {
-  const router = useRouter()
   const [input, setInput] = useState('')
 
   // Track the title for the current thread (first user message).

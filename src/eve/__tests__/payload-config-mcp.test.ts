@@ -69,6 +69,11 @@ describe('payload.config.ts sidebar tab registration', () => {
     expect(configSource).toContain('sidebar:')
     expect(configSource).toContain('tabs: customSidebarTabs')
   })
+
+  it('no longer registers the standalone Eve nav link', () => {
+    expect(configSource).not.toContain('afterNavLinks')
+    expect(configSource).not.toContain('EveNavLink')
+  })
 })
 
 const mediaSource = readFileSync(resolve(process.cwd(), 'src/collections/Media.ts'), 'utf-8')

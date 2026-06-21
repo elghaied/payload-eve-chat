@@ -25,7 +25,8 @@ import { APIKeyField as APIKeyField_210e1789eef737e0b4d9f054258f19bb } from '@pa
 import { AccessField as AccessField_210e1789eef737e0b4d9f054258f19bb } from '@payloadcms/plugin-mcp/client'
 import { APIKeysEmptyState as APIKeysEmptyState_210e1789eef737e0b4d9f054258f19bb } from '@payloadcms/plugin-mcp/client'
 import { MCPSettingsMenu as MCPSettingsMenu_210e1789eef737e0b4d9f054258f19bb } from '@payloadcms/plugin-mcp/client'
-import { EveNavLink as EveNavLink_e4053c035a815ae6e6445ba7e6d544d1 } from '../../../components/eve/EveNavLink'
+import { EveChatTabIcon as EveChatTabIcon_e7722af43083d192d7c294d5f5457ffe } from '../../../components/eve/EveChatTabIcon'
+import { EveChatTab as EveChatTab_09db0fdc59542043b94afe2dfb61dc2f } from '../../../components/eve/EveChatTab'
 import { EveView as EveView_3aa04f982e779067b4fb817502ff73f1 } from '../../../components/eve/EveView'
 import { CollectionCards as CollectionCards_ab83ff7e88da8d3530831f296ec4756a } from '@payloadcms/ui/rsc'
 
@@ -58,7 +59,8 @@ export const importMap = {
   "@payloadcms/plugin-mcp/client#AccessField": AccessField_210e1789eef737e0b4d9f054258f19bb,
   "@payloadcms/plugin-mcp/client#APIKeysEmptyState": APIKeysEmptyState_210e1789eef737e0b4d9f054258f19bb,
   "@payloadcms/plugin-mcp/client#MCPSettingsMenu": MCPSettingsMenu_210e1789eef737e0b4d9f054258f19bb,
-  "/components/eve/EveNavLink#EveNavLink": EveNavLink_e4053c035a815ae6e6445ba7e6d544d1,
+  "/components/eve/EveChatTabIcon#EveChatTabIcon": EveChatTabIcon_e7722af43083d192d7c294d5f5457ffe,
+  "/components/eve/EveChatTab#EveChatTab": EveChatTab_09db0fdc59542043b94afe2dfb61dc2f,
   "/components/eve/EveView#EveView": EveView_3aa04f982e779067b4fb817502ff73f1,
   "@payloadcms/ui/rsc#CollectionCards": CollectionCards_ab83ff7e88da8d3530831f296ec4756a
 }

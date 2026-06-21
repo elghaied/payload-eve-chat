@@ -27,7 +27,6 @@ export default buildConfig({
       baseDir: path.resolve(dirname),
     },
     components: {
-      afterNavLinks: ['/components/eve/EveNavLink#EveNavLink'],
       sidebar: {
         tabs: customSidebarTabs,
       },

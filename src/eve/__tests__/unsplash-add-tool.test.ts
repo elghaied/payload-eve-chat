@@ -3,9 +3,10 @@ import { describe, expect, it, vi, beforeEach } from 'vitest'
 vi.mock('../unsplash', () => ({
   getPhoto: vi.fn(),
   triggerDownload: vi.fn(),
+  assertUnsplashUrl: vi.fn(),
 }))
 
-import { getPhoto as mockGetPhoto, triggerDownload as mockTriggerDownload } from '../unsplash'
+import { assertUnsplashUrl as mockAssertUnsplashUrl, getPhoto as mockGetPhoto, triggerDownload as mockTriggerDownload } from '../unsplash'
 import { addPhotoToMediaHandler } from '../unsplash-add-tool'
 import type { PayloadRequest } from 'payload'
 
@@ -82,11 +83,26 @@ describe('addPhotoToMediaHandler', () => {
       ...PHOTO,
       urls: { ...PHOTO.urls, regular: 'https://evil.example.com/steal.jpg' },
     })
+    vi.mocked(mockAssertUnsplashUrl).mockImplementation(() => { throw new Error('Refusing non-Unsplash URL') })
     const req = makeReq()
     const result = await addPhotoToMediaHandler(makeArgs({}, req))
     expect(result.isError).toBe(true)
     expect(result.content[0].text).toContain('SSRF')
+    expect(mockTriggerDownload).not.toHaveBeenCalled()
     expect(req.payload.create).not.toHaveBeenCalled()
+  })
+
+  it('returns isError when fetch resolves with a non-ok status (e.g. 403)', async () => {
+    vi.mocked(mockGetPhoto).mockResolvedValueOnce(PHOTO)
+    vi.mocked(mockAssertUnsplashUrl).mockReturnValue(undefined as never)
+    vi.mocked(mockTriggerDownload).mockResolvedValueOnce(undefined)
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 403 }))
+    const req = makeReq()
+    const result = await addPhotoToMediaHandler(makeArgs({}, req))
+    expect(result.isError).toBe(true)
+    expect(result.content[0].text).toContain('HTTP 403')
+    expect(req.payload.create).not.toHaveBeenCalled()
+    vi.unstubAllGlobals()
   })
 
   it('rejects oversize images (> 10 MB)', async () => {

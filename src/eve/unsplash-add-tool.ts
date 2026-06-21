@@ -1,7 +1,7 @@
 import { defineTool } from '@payloadcms/plugin-mcp'
 import type { PayloadRequest } from 'payload'
 import { z } from 'zod'
-import { getPhoto, triggerDownload } from './unsplash'
+import { assertUnsplashUrl, getPhoto, triggerDownload } from './unsplash'
 
 const UTM = '?utm_source=payload-eve-chat&utm_medium=referral'
 const MAX_BYTES = 10 * 1024 * 1024 // 10 MB
@@ -38,23 +38,19 @@ export async function addPhotoToMediaHandler({
     return { content: [{ type: 'text' as const, text: unsplashErrorMessage(err) }], structuredContent: {} as never, isError: true as const }
   }
 
-  // 2. Trigger the Unsplash download event (ToS requirement, best-effort).
+  // 2. SSRF guard: image URL must be https and on unsplash.com / *.unsplash.com.
+  const imageUrl = photo.urls.regular
+  try {
+    assertUnsplashUrl(imageUrl)
+  } catch (err) {
+    return { content: [{ type: 'text' as const, text: `SSRF guard: ${err instanceof Error ? err.message : String(err)}` }], structuredContent: {} as never, isError: true as const }
+  }
+
+  // 3. Trigger the Unsplash download event (ToS requirement, best-effort).
   try {
     await triggerDownload(photo.links.download_location)
   } catch (err) {
     console.warn('[unsplash] triggerDownload failed (non-fatal):', err)
-  }
-
-  // 3. SSRF guard: image URL must be on *.unsplash.com.
-  const imageUrl = photo.urls.regular
-  let imageHost: string
-  try {
-    imageHost = new URL(imageUrl).hostname
-  } catch {
-    return { content: [{ type: 'text' as const, text: 'Invalid image URL from Unsplash.' }], structuredContent: {} as never, isError: true as const }
-  }
-  if (!imageHost.endsWith('.unsplash.com')) {
-    return { content: [{ type: 'text' as const, text: `SSRF guard: image URL host "${imageHost}" is not an Unsplash domain.` }], structuredContent: {} as never, isError: true as const }
   }
 
   // 4. Fetch the image bytes.
@@ -63,6 +59,9 @@ export async function addPhotoToMediaHandler({
     imageRes = await fetch(imageUrl)
   } catch (err) {
     return { content: [{ type: 'text' as const, text: `Failed to fetch image: ${err instanceof Error ? err.message : String(err)}` }], structuredContent: {} as never, isError: true as const }
+  }
+  if (!imageRes.ok) {
+    return { content: [{ type: 'text' as const, text: `Image fetch failed: HTTP ${imageRes.status}` }], structuredContent: {} as never, isError: true as const }
   }
 
   const contentType = imageRes.headers.get('content-type') ?? ''
@@ -91,7 +90,7 @@ export async function addPhotoToMediaHandler({
   })
 
   if (!doc.url) {
-    throw new Error('Media upload succeeded but URL is unavailable — check serverURL in payload.config.ts')
+    return { content: [{ type: 'text' as const, text: 'Media upload succeeded but URL is unavailable — check serverURL in payload.config.ts' }], structuredContent: {} as never, isError: true as const }
   }
 
   return {

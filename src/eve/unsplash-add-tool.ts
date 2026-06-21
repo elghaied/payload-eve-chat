@@ -14,11 +14,120 @@ const EXT_MAP: Record<string, string> = {
   'image/gif': 'gif',
 }
 
-function unsplashErrorMessage(err: unknown): string {
+export function unsplashErrorMessage(err: unknown): string {
   const status = (err as { status?: number }).status
   if (status === 401 || status === 403) return 'Unsplash auth failed — check UNSPLASH_ACCESS_KEY.'
   if (status === 429) return 'Unsplash rate limit reached (50/hr on the demo tier) — try again shortly.'
   return `Unsplash request failed: ${err instanceof Error ? err.message : String(err)}`
+}
+
+export type SavedPhoto = {
+  id: string | number
+  url: string
+  alt: string
+  credit: string
+  creditUrl: string
+}
+
+export type SavePhotoArgs = {
+  photoId: string
+  alt: string
+  req: PayloadRequest
+  authorizedMCP: { overrideAccess: boolean; user: unknown }
+}
+
+/**
+ * Download one Unsplash photo by id and save it to the Media collection with attribution.
+ * Shared by addPhotoToMedia (single) and addPhotosToMedia (batch). All the security guards
+ * live here: re-fetch the photo server-side, assertUnsplashUrl (https + *.unsplash.com)
+ * before fetching, fetch with redirect:'manual' (no off-host bounce), reject non-image /
+ * oversize, trigger the Unsplash download event (ToS). Returns a discriminated result so
+ * callers can aggregate without throwing.
+ */
+export async function savePhotoToMedia(
+  args: SavePhotoArgs,
+): Promise<{ ok: true; saved: SavedPhoto } | { ok: false; error: string }> {
+  const { photoId, alt, req, authorizedMCP } = args
+
+  // 1. Fetch photo metadata (re-fetched server-side; URL never round-trips through the model).
+  let photo
+  try {
+    photo = await getPhoto(photoId)
+  } catch (err) {
+    return { ok: false, error: unsplashErrorMessage(err) }
+  }
+
+  // 2. SSRF guard: image URL must be https and on unsplash.com / *.unsplash.com.
+  const imageUrl = photo.urls.regular
+  try {
+    assertUnsplashUrl(imageUrl)
+  } catch (err) {
+    return { ok: false, error: `SSRF guard: ${err instanceof Error ? err.message : String(err)}` }
+  }
+
+  // 3. Trigger the Unsplash download event (ToS requirement, best-effort).
+  try {
+    await triggerDownload(photo.links.download_location)
+  } catch (err) {
+    console.warn('[unsplash] triggerDownload failed (non-fatal):', err)
+  }
+
+  // 4. Fetch the image bytes (redirect:'manual' so a 30x can't bounce off-host).
+  let imageRes: Response
+  try {
+    imageRes = await fetch(imageUrl, { redirect: 'manual' })
+  } catch (err) {
+    return { ok: false, error: `Failed to fetch image: ${err instanceof Error ? err.message : String(err)}` }
+  }
+  if (!imageRes.ok) {
+    return { ok: false, error: `Image fetch failed: HTTP ${imageRes.status}` }
+  }
+
+  const contentType = imageRes.headers.get('content-type') ?? ''
+  if (!contentType.startsWith('image/')) {
+    return { ok: false, error: `Unexpected content-type "${contentType}" — expected an image.` }
+  }
+
+  const arrayBuffer = await imageRes.arrayBuffer()
+  if (arrayBuffer.byteLength > MAX_BYTES) {
+    return {
+      ok: false,
+      error: `Image is too large (${(arrayBuffer.byteLength / 1024 / 1024).toFixed(1)} MB; max 10 MB).`,
+    }
+  }
+  const buf = Buffer.from(arrayBuffer)
+  const mimetype = contentType.split(';')[0]!.trim()
+  const ext = EXT_MAP[mimetype] ?? 'png'
+  const name = `unsplash-${photo.id}.${ext}`
+
+  // 5. Save to Media with attribution.
+  const creditUrl = photo.user.links.html + UTM
+  const doc = await req.payload.create({
+    collection: 'media',
+    data: { alt, credit: photo.user.name, creditUrl } as never,
+    file: { data: buf, mimetype, name, size: buf.length },
+    overrideAccess: authorizedMCP.overrideAccess,
+    user: authorizedMCP.user,
+    req,
+  })
+
+  if (!doc.url) {
+    return {
+      ok: false,
+      error: 'Media upload succeeded but URL is unavailable — check serverURL in payload.config.ts',
+    }
+  }
+
+  return {
+    ok: true,
+    saved: {
+      id: doc.id as string | number,
+      url: doc.url as string,
+      alt,
+      credit: photo.user.name,
+      creditUrl,
+    },
+  }
 }
 
 export async function addPhotoToMediaHandler({
@@ -30,100 +139,33 @@ export async function addPhotoToMediaHandler({
   input: { photoId: string; alt: string }
   req: PayloadRequest
 }) {
-  // 1. Fetch photo metadata (re-fetched server-side; URL never round-trips through the model).
-  let photo
-  try {
-    photo = await getPhoto(input.photoId)
-  } catch (err) {
-    return { content: [{ type: 'text' as const, text: unsplashErrorMessage(err) }], structuredContent: {} as never, isError: true as const }
+  const result = await savePhotoToMedia({ photoId: input.photoId, alt: input.alt, req, authorizedMCP })
+  if (!result.ok) {
+    return { content: [{ type: 'text' as const, text: result.error }], structuredContent: {} as never, isError: true as const }
   }
-
-  // 2. SSRF guard: image URL must be https and on unsplash.com / *.unsplash.com.
-  const imageUrl = photo.urls.regular
-  try {
-    assertUnsplashUrl(imageUrl)
-  } catch (err) {
-    return { content: [{ type: 'text' as const, text: `SSRF guard: ${err instanceof Error ? err.message : String(err)}` }], structuredContent: {} as never, isError: true as const }
-  }
-
-  // 3. Trigger the Unsplash download event (ToS requirement, best-effort).
-  try {
-    await triggerDownload(photo.links.download_location)
-  } catch (err) {
-    console.warn('[unsplash] triggerDownload failed (non-fatal):', err)
-  }
-
-  // 4. Fetch the image bytes.
-  let imageRes: Response
-  try {
-    imageRes = await fetch(imageUrl, { redirect: 'manual' })
-  } catch (err) {
-    return { content: [{ type: 'text' as const, text: `Failed to fetch image: ${err instanceof Error ? err.message : String(err)}` }], structuredContent: {} as never, isError: true as const }
-  }
-  if (!imageRes.ok) {
-    return { content: [{ type: 'text' as const, text: `Image fetch failed: HTTP ${imageRes.status}` }], structuredContent: {} as never, isError: true as const }
-  }
-
-  const contentType = imageRes.headers.get('content-type') ?? ''
-  if (!contentType.startsWith('image/')) {
-    return { content: [{ type: 'text' as const, text: `Unexpected content-type "${contentType}" — expected an image.` }], structuredContent: {} as never, isError: true as const }
-  }
-
-  const arrayBuffer = await imageRes.arrayBuffer()
-  if (arrayBuffer.byteLength > MAX_BYTES) {
-    return { content: [{ type: 'text' as const, text: `Image is too large (${(arrayBuffer.byteLength / 1024 / 1024).toFixed(1)} MB; max 10 MB).` }], structuredContent: {} as never, isError: true as const }
-  }
-  const buf = Buffer.from(arrayBuffer)
-  const mimetype = contentType.split(';')[0]!.trim()
-  const ext = EXT_MAP[mimetype] ?? 'png'
-  const name = `unsplash-${photo.id}.${ext}`
-
-  // 5. Save to Media with attribution.
-  const creditUrl = photo.user.links.html + UTM
-  const doc = await req.payload.create({
-    collection: 'media',
-    data: { alt: input.alt, credit: photo.user.name, creditUrl } as never,
-    file: { data: buf, mimetype, name, size: buf.length },
-    overrideAccess: authorizedMCP.overrideAccess,
-    user: authorizedMCP.user,
-    req,
-  })
-
-  if (!doc.url) {
-    return { content: [{ type: 'text' as const, text: 'Media upload succeeded but URL is unavailable — check serverURL in payload.config.ts' }], structuredContent: {} as never, isError: true as const }
-  }
-
   return {
-    content: [
-      {
-        type: 'text' as const,
-        text: `Saved photo by ${photo.user.name} to Media (id: ${doc.id}). Embed: ![media:${doc.id}]() and credit the photographer.`,
-      },
-    ],
-    structuredContent: {
-      id: doc.id as string | number,
-      url: doc.url as string,
-      alt: input.alt,
-      credit: photo.user.name,
-      creditUrl,
-    },
+    // Terse confirmation only — the saved-photo card shows the image + credit. Do NOT put the
+    // ![media:<id>]() embed code here: it belongs in the article body, not in a chat message.
+    content: [{ type: 'text' as const, text: `Saved photo by ${result.saved.credit} to Media (id: ${result.saved.id}).` }],
+    structuredContent: result.saved as unknown as Record<string, unknown>,
   }
 }
 
 /**
  * Payload MCP tool: given an Unsplash photoId (from searchPhotos), fetch the image,
- * trigger the Unsplash download event (ToS), save to Media with photographer attribution,
- * and return an embed placeholder. Requires UNSPLASH_ACCESS_KEY.
+ * trigger the Unsplash download event (ToS), save to Media with photographer attribution.
+ * Requires UNSPLASH_ACCESS_KEY. SSRF-guarded (only *.unsplash.com); rejects images > 10 MB.
  *
- * SSRF guard: only fetches images from *.unsplash.com.
- * Size guard: rejects images > 10 MB.
+ * To embed the saved photo, use `![media:<id>]()` ONLY inside the article body via
+ * createDocumentFromMarkdown — never print that code as a chat message.
  */
 export const addPhotoToMediaTool = defineTool({
   description:
-    'Given a photoId from searchPhotos, download the Unsplash photo and save it to the Payload Media collection ' +
-    'with photographer attribution (credit, creditUrl). Returns the Media document id and a Markdown embed ' +
-    'placeholder `![media:<id>]()`. After saving, embed the placeholder in the article body AND add a caption ' +
-    '`_Photo by [Name](creditUrl) on Unsplash_`. Only call after the user has chosen a photoId from searchPhotos results.',
+    'Given a single photoId from searchPhotos, download the Unsplash photo and save it to the Payload Media ' +
+    'collection with photographer attribution (credit, creditUrl). Returns the Media document id. To use it, ' +
+    'embed `![media:<id>]()` ONLY inside the article body (createDocumentFromMarkdown) with a caption ' +
+    '`_Photo by [Name](creditUrl) on Unsplash_`. Do NOT print the embed code as a chat message — the saved ' +
+    'photo card already shows the image and credit. Prefer addPhotosToMedia when the user selects multiple photos.',
   input: z.object({
     photoId: z.string().min(1).describe('Unsplash photo id returned by searchPhotos.'),
     alt: z.string().min(1).max(500).describe('Alt text for the saved Media document.'),

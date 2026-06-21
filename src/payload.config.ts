@@ -15,6 +15,7 @@ import { createDocumentFromMarkdownTool } from './eve/markdown-tool'
 import { generateImageTool } from './eve/generate-image-tool'
 import { searchPhotosTool } from './eve/unsplash-search-tool'
 import { addPhotoToMediaTool } from './eve/unsplash-add-tool'
+import { addPhotosToMediaTool } from './eve/unsplash-add-multi-tool'
 
 const filename = fileURLToPath(import.meta.url)
 const dirname = path.dirname(filename)
@@ -90,7 +91,11 @@ export default buildConfig({
         createDocumentFromMarkdown: createDocumentFromMarkdownTool,
         generateImage: generateImageTool,
         ...(process.env.UNSPLASH_ACCESS_KEY
-          ? { searchPhotos: searchPhotosTool, addPhotoToMedia: addPhotoToMediaTool }
+          ? {
+              searchPhotos: searchPhotosTool,
+              addPhotoToMedia: addPhotoToMediaTool,
+              addPhotosToMedia: addPhotosToMediaTool,
+            }
           : {}),
       },
       // In development, bypass API key auth so the endpoint is reachable without

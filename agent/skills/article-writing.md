@@ -134,12 +134,11 @@ If generating a hero image: call `generateImage` (SP-B) before calling
 
 When the user requests a real photo (or you have `UNSPLASH_ACCESS_KEY` available and a real photograph suits the article):
 
-1. Call `searchPhotos({ query: "<topic>", perPage: 6 })`. An in-chat grid of thumbnail candidates appears.
-2. Review the candidates with the user (or auto-select the most relevant if the user has delegated).
-3. Call `addPhotoToMedia({ photoId: "<chosen id>", alt: "<brief descriptive alt text>" })`.
-   - It returns `{ id, url, credit, creditUrl }` via `structuredContent`.
-   - An in-chat media card will appear automatically.
-4. Embed the image placeholder at the top of the article:
+1. Call `searchPhotos({ query: "<topic>", perPage: 6 })`. An in-chat grid of thumbnail candidates appears; the user **multi-selects photos and clicks "Add selected"**.
+2. When asked to add the chosen photos, call **`addPhotosToMedia({ photos: [{ photoId, alt }, ...] })`** ONCE with all of them (write a fitting `alt` per photo from its description). For a single one-off photo you may use `addPhotoToMedia({ photoId, alt })`.
+   - They return the saved Media docs (`{ id, url, credit, creditUrl }`) via `structuredContent`; an in-chat saved-photos card appears automatically.
+   - **Do NOT print the `![media:<id>]()` embed code or the credit line as a chat message** — the card already shows it. That Markdown goes ONLY inside the article body (next step).
+3. Embed each image placeholder in the article body:
    ```
    ![media:<id>]()
    ```

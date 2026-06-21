@@ -4,6 +4,7 @@ import {
   AlertTriangleIcon,
   BanIcon,
   CheckCircle2Icon,
+  CheckIcon,
   CircleIcon,
   ExternalLinkIcon,
   GlobeIcon,
@@ -18,7 +19,7 @@ import {
   SparklesIcon,
   XCircleIcon,
 } from 'lucide-react'
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import type { EveDynamicToolPart } from 'eve/react'
 import { MessageResponse } from '@/components/ai-elements/message'
 import { Spinner } from '@/components/ui/spinner'
@@ -28,9 +29,14 @@ import {
   describeToolResult,
   hostOf,
   runningLabel,
+  type MediaImageItem,
+  type PhotoCandidate,
   type TodoStatus,
   type ToolResultView,
 } from './toolResult'
+
+/** Selected photos passed up when the user clicks "Add selected" on a search-results grid. */
+export type PhotoSelection = { photoId: string; description: string }
 
 function Shell({ icon, children }: { icon: ReactNode; children: ReactNode }) {
   return (
@@ -45,12 +51,12 @@ function Shell({ icon, children }: { icon: ReactNode; children: ReactNode }) {
 
 function ResultBody({
   view,
-  onSelectPhoto,
+  onAddPhotos,
   busy,
 }: {
   view: ToolResultView
-  /** Click-to-select for the photo_search grid: picks an Unsplash photo by id. */
-  onSelectPhoto?: (photoId: string, description: string) => void
+  /** Add the selected Unsplash photos (from the photo_search grid) to Media in one batch. */
+  onAddPhotos?: (photos: PhotoSelection[]) => void
   busy?: boolean
 }) {
   if (view.kind === 'web_search') {
@@ -268,42 +274,151 @@ function ResultBody({
     )
   }
 
-  if (view.kind === 'photo_search') {
-    if (view.photos.length === 0) {
+  if (view.kind === 'media_images') {
+    if (view.images.length === 0) {
       return (
-        <div>
-          <div className="mb-1 font-medium">Unsplash search</div>
-          <p className="text-muted-foreground text-xs">No photos found for "{view.query}".</p>
-        </div>
+        <span className="text-muted-foreground">
+          No photos were saved{view.failedCount ? ` (${view.failedCount} failed)` : ''}.
+        </span>
       )
     }
     return (
       <div>
         <div className="mb-2 font-medium">
-          Unsplash photos for "{view.query}"
+          Saved {view.images.length} photo{view.images.length === 1 ? '' : 's'} to Media
+          {view.failedCount ? (
+            <span className="font-normal text-muted-foreground text-xs"> ({view.failedCount} failed)</span>
+          ) : null}
         </div>
-        {onSelectPhoto && (
-          <p className="mb-2 text-muted-foreground text-xs">Click a photo to use it.</p>
-        )}
         <div className="grid grid-cols-3 gap-2">
-          {view.photos.map((p) => (
+          {view.images.map((img) => (
+            <SavedImageThumb key={String(img.id)} img={img} />
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  if (view.kind === 'photo_search') {
+    return <PhotoSearchGrid query={view.query} photos={view.photos} onAddPhotos={onAddPhotos} busy={busy} />
+  }
+
+  // Last-resort: a clean done line — we never dump raw JSON into the chat.
+  return (
+    <span className="text-muted-foreground">{humanizeToolName(view.tool)} completed</span>
+  )
+}
+
+/** One saved Media image (used in the batch media_images grid): preview + credit. */
+function SavedImageThumb({ img }: { img: MediaImageItem }) {
+  const isSameOrigin = img.url.startsWith('/')
+  return (
+    <div className="overflow-hidden rounded border">
+      <a href={`/admin/collections/media/${img.id}`} title="View in admin">
+        {isSameOrigin ? (
+          <img src={img.url} alt={img.alt} className="h-20 w-full object-cover" />
+        ) : (
+          <div className="flex h-20 w-full items-center justify-center text-muted-foreground text-xs">
+            no preview
+          </div>
+        )}
+      </a>
+      {img.credit && img.creditUrl && (
+        <p className="truncate p-1 text-muted-foreground text-xs">
+          <a href={img.creditUrl} target="_blank" rel="noopener noreferrer" className="hover:underline">
+            {img.credit}
+          </a>
+        </p>
+      )}
+    </div>
+  )
+}
+
+/**
+ * Multi-select Unsplash search results: click thumbnails to toggle selection, then
+ * "Add N selected" sends all chosen photos to Eve in one batch (one tool call, one turn).
+ * Local selection state lives here; it's an ephemeral live-interaction concern.
+ */
+function PhotoSearchGrid({
+  query,
+  photos,
+  onAddPhotos,
+  busy,
+}: {
+  query: string
+  photos: PhotoCandidate[]
+  onAddPhotos?: (photos: PhotoSelection[]) => void
+  busy?: boolean
+}) {
+  const [selected, setSelected] = useState<ReadonlySet<string>>(() => new Set())
+  const [added, setAdded] = useState(false)
+
+  if (photos.length === 0) {
+    return (
+      <div>
+        <div className="mb-1 font-medium">Unsplash search</div>
+        <p className="text-muted-foreground text-xs">No photos found for "{query}".</p>
+      </div>
+    )
+  }
+
+  const toggle = (id: string) =>
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+
+  const selectable = Boolean(onAddPhotos) && !added
+  const count = selected.size
+
+  const handleAdd = () => {
+    if (!onAddPhotos || count === 0) return
+    const chosen = photos
+      .filter((p) => selected.has(p.photoId))
+      .map((p) => ({ photoId: p.photoId, description: p.description }))
+    onAddPhotos(chosen)
+    setAdded(true) // lock the card after submitting so the user can't double-add
+  }
+
+  return (
+    <div>
+      <div className="mb-2 font-medium">Unsplash photos for "{query}"</div>
+      {selectable && (
+        <p className="mb-2 text-muted-foreground text-xs">Select one or more photos, then add them.</p>
+      )}
+      <div className="grid grid-cols-3 gap-2">
+        {photos.map((p) => {
+          const isSel = selected.has(p.photoId)
+          return (
             <div key={p.photoId} className="overflow-hidden rounded border">
-              {/* Clicking the thumbnail asks Eve to add THIS photo to Media. The photographer
-                  link below is a separate <a> (not nested), so it never triggers selection. */}
+              {/* The thumbnail toggles selection; the photographer link below is a separate
+                  <a> (not nested), so clicking it opens Unsplash rather than selecting. */}
               <button
                 type="button"
-                disabled={!onSelectPhoto || busy}
-                onClick={() => onSelectPhoto?.(p.photoId, p.description)}
-                title={onSelectPhoto ? 'Use this photo' : undefined}
-                className="block w-full cursor-pointer transition hover:opacity-90 hover:ring-2 hover:ring-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-default disabled:hover:ring-0"
-                aria-label={`Use photo: ${p.description}`}
+                disabled={!selectable}
+                aria-pressed={isSel}
+                onClick={() => toggle(p.photoId)}
+                title={selectable ? 'Select this photo' : undefined}
+                className={
+                  'relative block w-full transition focus:outline-none focus-visible:ring-2 focus-visible:ring-primary ' +
+                  (selectable ? 'cursor-pointer hover:opacity-90' : 'cursor-default') +
+                  (isSel ? ' ring-2 ring-primary' : '')
+                }
+                aria-label={`Select photo: ${p.description}`}
               >
                 <img
                   src={p.thumbUrl}
                   alt={p.description}
-                  className="h-20 w-full object-cover"
+                  className={'h-20 w-full object-cover' + (isSel ? ' opacity-80' : '')}
                   referrerPolicy="no-referrer"
                 />
+                {isSel && (
+                  <span className="absolute right-1 top-1 rounded-full bg-primary p-0.5 text-primary-foreground">
+                    <CheckIcon className="size-3" />
+                  </span>
+                )}
               </button>
               <div className="p-1">
                 <p className="line-clamp-1 text-xs font-medium">{p.description}</p>
@@ -318,15 +433,21 @@ function ResultBody({
                 </a>
               </div>
             </div>
-          ))}
-        </div>
+          )
+        })}
       </div>
-    )
-  }
-
-  // Last-resort: a clean done line — we never dump raw JSON into the chat.
-  return (
-    <span className="text-muted-foreground">{humanizeToolName(view.tool)} completed</span>
+      {onAddPhotos && (
+        <button
+          type="button"
+          disabled={!selectable || count === 0 || busy}
+          onClick={handleAdd}
+          className="mt-2 inline-flex items-center gap-1 rounded-md bg-primary px-3 py-1.5 font-medium text-primary-foreground text-xs transition hover:opacity-90 disabled:opacity-50"
+        >
+          <PlusIcon className="size-3.5" />
+          {added ? 'Added' : count > 0 ? `Add ${count} selected` : 'Add selected'}
+        </button>
+      )}
+    </div>
   )
 }
 
@@ -346,6 +467,7 @@ function iconFor(view: ToolResultView): ReactNode {
     case 'web_fetch':
       return <GlobeIcon className="size-4" />
     case 'media_image':
+    case 'media_images':
       return <ImageIcon className="size-4 text-purple-600" />
     case 'photo_search':
       return <ImageIcon className="size-4 text-amber-600" />
@@ -375,12 +497,12 @@ function iconFor(view: ToolResultView): ReactNode {
  */
 export function ToolResultCard({
   part,
-  onSelectPhoto,
+  onAddPhotos,
   busy,
 }: {
   part: EveDynamicToolPart
-  /** Click-to-select handler for Unsplash photo_search results. */
-  onSelectPhoto?: (photoId: string, description: string) => void
+  /** Batch "Add selected" handler for the Unsplash photo_search grid. */
+  onAddPhotos?: (photos: PhotoSelection[]) => void
   busy?: boolean
 }) {
   const label = humanizeToolName(bareToolName(part.toolMetadata?.eve?.name ?? part.toolName))
@@ -418,7 +540,7 @@ export function ToolResultCard({
   if (!view) return null
   return (
     <Shell icon={iconFor(view)}>
-      <ResultBody view={view} onSelectPhoto={onSelectPhoto} busy={busy} />
+      <ResultBody view={view} onAddPhotos={onAddPhotos} busy={busy} />
     </Shell>
   )
 }

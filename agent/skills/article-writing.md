@@ -130,6 +130,39 @@ If generating a hero image: call `generateImage` (SP-B) before calling
    })
 ```
 
+## 4b. Using a real photo from Unsplash
+
+When the user requests a real photo (or you have `UNSPLASH_ACCESS_KEY` available and a real photograph suits the article):
+
+1. Call `searchPhotos({ query: "<topic>", perPage: 6 })`. An in-chat grid of thumbnail candidates appears.
+2. Review the candidates with the user (or auto-select the most relevant if the user has delegated).
+3. Call `addPhotoToMedia({ photoId: "<chosen id>", alt: "<brief descriptive alt text>" })`.
+   - It returns `{ id, url, credit, creditUrl }` via `structuredContent`.
+   - An in-chat media card will appear automatically.
+4. Embed the image placeholder at the top of the article:
+   ```
+   ![media:<id>]()
+   ```
+5. Add a credit caption immediately after the placeholder (or after the photo, inline):
+   ```
+   _Photo by [<credit>](<creditUrl>) on Unsplash_
+   ```
+
+**Tool call sequence:**
+```
+1. searchPhotos({ query: "mountain lake at dusk", perPage: 6 })
+   → structuredContent.photos: [{ photoId, thumbUrl, photographer, ... }, ...]
+2. addPhotoToMedia({ photoId: "abc123", alt: "mountain lake at dusk" })
+   → structuredContent: { id: "media-1", url: "/media/unsplash-abc123.jpg", credit: "Jane Doe", creditUrl: "https://unsplash.com/@jane?utm_source=payload-eve-chat&utm_medium=referral" }
+3. createDocumentFromMarkdown({
+     collectionSlug: "posts",
+     data: { title: "...", status: "draft" },
+     markdown: { content: "![media:media-1]()\n\n_Photo by [Jane Doe](https://unsplash.com/@jane?utm_source=payload-eve-chat&utm_medium=referral) on Unsplash_\n\n## Introduction\n\n..." }
+   })
+```
+
+**Attribution is mandatory** (Unsplash ToS): always include the `_Photo by [Name](creditUrl) on Unsplash_` caption. Use the `creditUrl` exactly as returned (UTM params are already included).
+
 ## 5. Article structure guidelines
 
 A well-structured Lexical article:
@@ -152,6 +185,8 @@ A well-structured Lexical article:
 | `updateDocument` | Flip `status` from `"draft"` to `"published"` (pass `id` + `data: { status: "published" }`) |
 | `findDocuments` | Look up existing posts or media by query |
 | `generateImage` *(SP-B)* | Generate an image, save to Payload Media, return `{ id, url }`. **Required inputs:** `prompt` (string) and `alt` (string, non-empty). |
+| `searchPhotos` *(Unsplash)* | Search Unsplash for real photos. Returns `structuredContent.photos[]`. Required input: `query`. Optional: `perPage` (default 6). |
+| `addPhotoToMedia` *(Unsplash)* | Download a chosen Unsplash photo and save to Media. Returns `{ id, url, credit, creditUrl }`. Required inputs: `photoId`, `alt`. |
 
 MCP tool names arrive prefixed (`connection__payload-mcp__<tool>`). You call them by their short
 name through the connection — the framework resolves the prefix.

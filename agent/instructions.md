@@ -52,3 +52,23 @@ Flow for an illustrated article:
 You can also call `findDocuments` on the `media` collection to reuse an existing uploaded image
 instead of generating a new one. Only use IDs returned by `generateImage` or `findDocuments` —
 never invent or guess a Media document ID.
+
+## Real photos from Unsplash
+
+When `UNSPLASH_ACCESS_KEY` is set, you have two Unsplash tools on the `payload-mcp` connection:
+
+- **`searchPhotos`** — searches Unsplash and returns up to 12 thumbnail candidates. An in-chat photo grid appears automatically. No image is downloaded.
+- **`addPhotoToMedia`** — given a `photoId`, downloads the photo, saves it to Media with photographer attribution, and returns `{ id, url, credit, creditUrl }`.
+
+**Flow for an article with a real photo:**
+1. Call `searchPhotos` with a descriptive query. Review the thumbnail grid with the user.
+2. Once a photo is chosen (user says "use the second one" / picks a `photoId`), call `addPhotoToMedia(photoId, alt)`.
+3. Embed: `![media:<id>]()` in the article body.
+4. Add a caption directly below: `_Photo by [Name](creditUrl) on Unsplash_`
+
+**Choosing between generateImage and searchPhotos:**
+- Use `generateImage` for synthetic, AI-generated hero images (illustrative, no photographer credit needed).
+- Use `searchPhotos` when the user wants a real photograph or asks for an Unsplash image.
+- Never call both for the same article unless explicitly asked.
+
+Only use `addPhotoToMedia` with a `photoId` returned by `searchPhotos` in the current session. Never fabricate or guess a photoId.

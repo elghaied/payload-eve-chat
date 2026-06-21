@@ -4,7 +4,7 @@ import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
 const mockFetch = vi.fn()
 vi.stubGlobal('fetch', mockFetch)
 
-import { searchPhotos, getPhoto, triggerDownload, type UnsplashPhoto } from '../unsplash'
+import { searchPhotos, getPhoto, triggerDownload, assertUnsplashUrl, type UnsplashPhoto } from '../unsplash'
 
 const PHOTO: UnsplashPhoto = {
   id: 'abc123',
@@ -79,18 +79,61 @@ describe('getPhoto', () => {
 })
 
 describe('triggerDownload', () => {
-  it('calls the download_location URL with auth (best-effort, no return)', async () => {
+  it('calls the download_location URL with auth and redirect:manual (best-effort, no return)', async () => {
     process.env.UNSPLASH_ACCESS_KEY = 'test-key'
     mockFetch.mockResolvedValueOnce(okJson({ url: 'https://images.unsplash.com/photo-dl' }))
     await expect(triggerDownload('https://api.unsplash.com/photos/abc123/download')).resolves.toBeUndefined()
     const [url, opts] = mockFetch.mock.calls[0] as [string, RequestInit]
     expect(url).toBe('https://api.unsplash.com/photos/abc123/download')
     expect((opts.headers as Record<string, string>)['Authorization']).toBe('Client-ID test-key')
+    expect(opts.redirect).toBe('manual')
   })
 
   it('swallows errors (non-fatal)', async () => {
     process.env.UNSPLASH_ACCESS_KEY = 'test-key'
     mockFetch.mockRejectedValueOnce(new Error('network'))
     await expect(triggerDownload('https://api.unsplash.com/photos/x/download')).resolves.toBeUndefined()
+  })
+
+  it('does NOT call fetch for a non-Unsplash URL and does not throw', async () => {
+    process.env.UNSPLASH_ACCESS_KEY = 'test-key'
+    await expect(triggerDownload('https://evil.example.com/x')).resolves.toBeUndefined()
+    expect(mockFetch).not.toHaveBeenCalled()
+  })
+})
+
+describe('getPhoto — id validation', () => {
+  it('throws "Invalid Unsplash photo id" for an id with spaces/special chars', async () => {
+    process.env.UNSPLASH_ACCESS_KEY = 'test-key'
+    await expect(getPhoto('bad id!')).rejects.toThrow('Invalid Unsplash photo id')
+    expect(mockFetch).not.toHaveBeenCalled()
+  })
+
+  it('throws "Invalid Unsplash photo id" for an empty id', async () => {
+    process.env.UNSPLASH_ACCESS_KEY = 'test-key'
+    await expect(getPhoto('')).rejects.toThrow('Invalid Unsplash photo id')
+    expect(mockFetch).not.toHaveBeenCalled()
+  })
+})
+
+describe('assertUnsplashUrl', () => {
+  it('accepts https://images.unsplash.com/...', () => {
+    expect(() => assertUnsplashUrl('https://images.unsplash.com/photo-abc')).not.toThrow()
+  })
+
+  it('accepts https://api.unsplash.com/...', () => {
+    expect(() => assertUnsplashUrl('https://api.unsplash.com/photos/abc/download')).not.toThrow()
+  })
+
+  it('rejects http://api.unsplash.com/... (not https)', () => {
+    expect(() => assertUnsplashUrl('http://api.unsplash.com/photos/abc')).toThrow('Refusing non-Unsplash URL')
+  })
+
+  it('rejects https://evil.com/... (wrong host)', () => {
+    expect(() => assertUnsplashUrl('https://evil.com/unsplash.com/steal')).toThrow('Refusing non-Unsplash URL')
+  })
+
+  it('rejects a non-URL string', () => {
+    expect(() => assertUnsplashUrl('not-a-url')).toThrow('Refusing non-URL Unsplash target')
   })
 })

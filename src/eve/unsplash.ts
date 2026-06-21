@@ -6,6 +6,25 @@ function authHeader(): Record<string, string> {
   return { Authorization: `Client-ID ${key}` }
 }
 
+/**
+ * Parse a URL and require it be an https Unsplash host. Throws otherwise.
+ * Used before sending the Client-ID auth header or fetching an image, so a
+ * tampered/unexpected URL can't leak the key or hit an arbitrary host (SSRF).
+ */
+export function assertUnsplashUrl(raw: string): URL {
+  let u: URL
+  try {
+    u = new URL(raw)
+  } catch {
+    throw new Error(`Refusing non-URL Unsplash target: ${String(raw).slice(0, 80)}`)
+  }
+  const okHost = u.hostname === 'unsplash.com' || u.hostname.endsWith('.unsplash.com')
+  if (u.protocol !== 'https:' || !okHost) {
+    throw new Error(`Refusing non-Unsplash URL: ${u.protocol}//${u.hostname}`)
+  }
+  return u
+}
+
 export type UnsplashPhoto = {
   id: string
   description: string | null
@@ -45,12 +64,21 @@ export async function searchPhotos(query: string, perPage: number): Promise<Unsp
 }
 
 export async function getPhoto(id: string): Promise<UnsplashPhoto> {
+  if (!/^[A-Za-z0-9_-]+$/.test(id)) {
+    throw new Error('Invalid Unsplash photo id')
+  }
   return apiGet<UnsplashPhoto>(`/photos/${id}`)
 }
 
 export async function triggerDownload(downloadLocation: string): Promise<void> {
   try {
-    await fetch(downloadLocation, { headers: authHeader() })
+    assertUnsplashUrl(downloadLocation)
+  } catch (err) {
+    console.warn('[unsplash] triggerDownload: invalid URL, skipping (non-fatal):', err)
+    return
+  }
+  try {
+    await fetch(downloadLocation, { headers: authHeader(), redirect: 'manual' })
   } catch (err) {
     console.warn('[unsplash] triggerDownload failed (non-fatal):', err)
   }

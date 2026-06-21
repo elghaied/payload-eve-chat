@@ -14,27 +14,80 @@ voice, Eve's built-in web search) so it deploys to Vercel with no Docker/self-ho
 
 - **In-admin chat** at `/admin/eve` — streaming replies, durable sessions, a thread sidebar with
   reopen + history replay. Admin-only (authenticated via the Payload session).
-- **Content tools over MCP** — Eve reads and writes **Posts** and **Tasks** entirely through
-  Payload's MCP server (`/api/mcp`). Users/Media/Conversations are locked out of MCP.
-- **Post preview (approve-before-create)** — when you ask Eve to write a post, it calls
-  `propose_post` and shows an **editable** preview panel; the post is only created via
-  `createDocumentFromMarkdown` after you review/edit and approve.
+- **Content tools over MCP** — Eve reads and writes **Posts** and **Tasks** through Payload's MCP
+  server (`/api/mcp`) and can **read Media**. Users and Conversations are fully locked out of MCP;
+  Media is read-only there (image *writes* go through the image-generation tool, below).
+- **Write articles (draft → approve → publish)** — ask Eve to write a post and it drafts it
+  **inline** as Markdown; you approve in chat (just say "approve") and it creates the post via
+  `createDocumentFromMarkdown` (Markdown → Lexical), then flips it to *published* on request. A
+  load-on-demand **`article-writing` skill** teaches the full Lexical vocabulary (headings, lists,
+  checklists, blockquotes, horizontal rules, strikethrough, code, links) and the image placeholder.
+- **Image generation** — the `generateImage` MCP tool calls a **Vercel AI Gateway image model**
+  (default `imagen-4.0-fast`, ~$0.02/image), saves the result to the **Media** collection, and
+  returns its id so Eve can embed it in an article as a hero/inline image — `![media:<id>]()`
+  converts to a real Lexical upload node. Override with `EVE_IMAGE_MODEL`.
+- **Attach files to chat** — drop **images or PDFs** into the composer and Eve reads them
+  (multimodal). Attached files go straight to the model inline; they are **not** stored in Payload.
+- **Rich tool cards** — every tool result renders as real UI — clickable web-search links,
+  "Created post → admin link", generated-image previews, to-do checklists, discovered-tool
+  summaries — **never raw JSON**.
 - **Web search + read-URL** — Eve's provider-native `web_search` (clickable result links) and the
   built-in `web_fetch` (fetch any URL as Markdown), both through the AI Gateway. No SearXNG, no
   extra key. A client-side **stall watchdog** aborts a turn that goes silent for 60 s, so a stalled
   provider stream (a known gateway risk for server-side tools) can't hang the chat indefinitely.
 - **Hands-free voice** — streaming speech-to-text and text-to-speech via **Deepgram** (Nova-3 STT
-  + Aura-2 TTS) with end-of-utterance detection and barge-in. The mic button appears when
-  `DEEPGRAM_API_KEY` is configured. The key always stays server-side: **STT** uses a short-lived
-  token from `/api/deepgram/token` (browser opens the Deepgram WS directly); **TTS** is proxied
-  through `/api/deepgram/speak` (Deepgram's grant tokens are ASR-scoped only, so Aura TTS can't use
-  them). Use a **Member-role key with default scopes** — a lower role fails STT
-  (`403 Insufficient permissions`), and an ASR-only-scoped key makes TTS silent.
+  + Aura-2 TTS), push-to-talk from the mic button (appears when `DEEPGRAM_API_KEY` is set). The key
+  always stays server-side: **STT** uses a short-lived token from `/api/deepgram/token` (browser
+  opens the Deepgram WS directly); **TTS** is proxied through `/api/deepgram/speak` (Deepgram's
+  grant tokens are ASR-scoped only, so Aura TTS can't use them). Use a **Member-role key with
+  default scopes** — a lower role fails STT (`403 Insufficient permissions`), and an ASR-only-scoped
+  key makes TTS silent.
 - **Code-exec disabled by design** — Eve's default sandbox tools (`bash`/`read_file`/`write_file`/
   `glob`/`grep`) are turned off; the agent operates only on Payload data over MCP.
 
 > The previous **Vercel AI SDK** implementation (with provider-switching across Claude/GPT/Ollama)
 > is preserved on the **`ai-sdk` branch**.
+
+## Architecture
+
+![Eve + Payload architecture](images/eve-payload-architecture-hires.png)
+
+```mermaid
+flowchart LR
+    subgraph browser["Payload Admin — /admin/eve"]
+        UI["Chat UI (useEveAgent)<br/>attachments · tool cards · image previews"]
+        Mic["Mic (push-to-talk)"]
+    end
+
+    subgraph next["Next.js app (Payload v4)"]
+        Channel["Eve channel /eve/v1/*<br/>admin-only: validates Payload session"]
+        MCP["Payload MCP /api/mcp<br/>@payloadcms/plugin-mcp"]
+        DG["/api/deepgram/* (token + TTS proxy)"]
+    end
+
+    subgraph eve["Eve runtime (vercel/eve)"]
+        Agent["ToolLoopAgent — model via AI Gateway"]
+        Tools["built-in: web_search · web_fetch · todo · ask_question<br/>code-exec: disabled"]
+        Skill["skill: article-writing (load_skill)"]
+    end
+
+    GW["Vercel AI Gateway<br/>chat (Haiku 4.5) · image (Imagen) · web search"]
+    DGcloud["Deepgram<br/>Nova-3 STT · Aura-2 TTS"]
+    DB[("MongoDB<br/>Posts · Tasks · Media · Conversations · Users")]
+
+    UI <--> Channel --> Agent
+    Agent --> GW
+    Agent --> Tools
+    Agent --> Skill
+    Agent -->|"Posts/Tasks/Media · createDocumentFromMarkdown · generateImage"| MCP --> DB
+    MCP -->|"generateImage → image model"| GW
+    UI -. "30s token" .-> DG
+    Mic <--> DG <--> DGcloud
+```
+
+The browser talks only to same-origin Next.js routes; the **Eve runtime** is a private child
+process behind `/eve/v1/*`. All content lives in Payload (MongoDB); chat-attached files go inline to
+the model and are never persisted.
 
 ## Requirements
 
@@ -66,7 +119,7 @@ free MongoDB Atlas cluster — no Docker required.
 ### Collections
 
 - **Users** — auth-enabled; admin-panel access.
-- **Media** — uploads with preconfigured sizes/focal point.
+- **Media** — an upload collection; also where Eve saves generated images (`generateImage`).
 - **Posts** / **Tasks** — the content Eve manages over MCP.
 - **Conversations** — a thin per-thread index (`eveSessionId`, `continuationToken`, `streamIndex`,
   owner). Message bodies live in Eve, not Payload.
@@ -78,15 +131,21 @@ The agent is a filesystem project under `agent/`:
 ```
 agent/
   agent.ts                   # Eve agent definition (model via AI Gateway)
-  instructions.md            # system prompt (Posts/Tasks, post-preview, web access)
+  instructions.md            # system prompt (Posts/Tasks, article + image flow, web access)
+  skills/
+    article-writing.md       # load-on-demand: Lexical Markdown vocab + draft→publish
   tools/
     bash.ts read_file.ts write_file.ts glob.ts grep.ts   # disableTool() — code-exec off
-    propose_post.ts          # approve-before-create post preview (HITL)
   connections/
-    payload-mcp.ts           # Eve MCP connection → /api/mcp (Posts + Tasks)
+    payload-mcp.ts           # Eve MCP connection → /api/mcp (Posts, Tasks, Media)
   channels/
     eve.ts                   # HTTP channel; authenticates via the Payload admin session
 ```
+
+Two Payload-side MCP tools live in `src/eve/` (they run in the Next/Payload process so they can call
+both the AI Gateway and `payload.create`): `markdown-tool.ts` (`createDocumentFromMarkdown`) and
+`generate-image-tool.ts` (`generateImage`). They're registered on the MCP plugin in
+`src/payload.config.ts`.
 
 `withEve` in `next.config.ts` mounts Eve's HTTP channel at `/eve/v1/*`. The `/admin/eve` page uses
 Eve's `useEveAgent` hook to stream through that channel. The channel is **admin-only** — it
@@ -103,12 +162,14 @@ EVE_MODEL=anthropic/claude-haiku-4.5   # default: native web_search + strong too
                                         # openai/gpt-oss-120b whose creator isn't the provider)
 ```
 
-The default is chosen for strong tool calling (the MCP Posts/Tasks demo depends on it). Cheaper
-swaps: `google/gemini-2.5-flash`, `openai/gpt-4o-mini`. Avoid models weak at tool calls
-(`llama-3.3-70b` emits malformed tool calls and breaks the MCP demo). Web search runs through a
-small gateway-backed tool (`agent/tools/web_search.ts`, Perplexity Sonar) rather than the model's
-provider-native search, which is unreliable through the gateway (unsupported on Groq, hangs on
-Anthropic).
+The default is chosen for strong tool calling (the MCP Posts/Tasks demo depends on it) and for
+supporting Eve's **provider-native** `web_search`. Cheaper swaps: `google/gemini-2.5-flash`,
+`openai/gpt-4o-mini`. Avoid models weak at tool calls (`llama-3.3-70b` emits malformed tool calls
+and breaks the MCP demo) and models whose serving provider doesn't support native server tools
+(e.g. `openai/gpt-oss-120b` on Groq — no `web_search`). Native web search returns clickable result
+links; a client-side **stall watchdog** bounds the rare case where a server-tool stream hangs (see
+Features). If native search stalls often on your chosen model, switch `EVE_MODEL` to a Sonnet/Opus
+Anthropic model (broader server-tool support).
 
 Auth the gateway with `vercel link && vercel env pull .env.local` (writes `VERCEL_OIDC_TOKEN`,
 which expires ~12h — re-pull when gateway calls start returning auth errors) or set a stable
@@ -190,10 +251,12 @@ through the AI Gateway and bills credits** — run it deliberately, not in a loo
   `eve-chat.e2e.spec.ts` seeds its own admin, asks Eve to create a Task, and asserts it persisted —
   this one spends AI Gateway credits. It needs `VERCEL_OIDC_TOKEN`/`AI_GATEWAY_API_KEY` set and a
   reachable MongoDB. Playwright runs serially (`workers: 1`) because specs share one admin user.
-- **Voice (manual, needs a mic + `DEEPGRAM_API_KEY`):** open `/admin/eve`, click the mic button,
-  speak a request, and confirm Eve transcribes it, replies, and speaks the reply aloud; start
-  talking while it speaks to confirm barge-in stops playback. (Uses Deepgram credit, not the AI
-  Gateway.)
+- **Voice (manual, needs a mic + `DEEPGRAM_API_KEY`):** open `/admin/eve`, hold the mic button (or
+  the keyboard shortcut) to talk — push-to-talk — and confirm Eve transcribes it, replies, and
+  speaks the reply aloud. (Uses Deepgram credit, not the AI Gateway.)
+- **Image generation & illustrated articles (manual, bills AI Gateway image credits):** ask Eve to
+  attach a hero image / write an illustrated article and confirm the generated image saves to Media
+  and embeds in the post. Also try attaching an image or PDF in the composer and asking about it.
 
 ## Questions
 

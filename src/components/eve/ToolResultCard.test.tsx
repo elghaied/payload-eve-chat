@@ -284,17 +284,21 @@ describe('ToolResultCard — photo_search', () => {
   })
 })
 
-describe('ToolResultCard — media_image with credit', () => {
-  it('renders the credit line when credit is present', () => {
+describe('ToolResultCard — media_images with credit', () => {
+  it('renders a credit link for each saved photo when credit is present', () => {
+    // Unsplash photos go through the batch tool; a single photo is an array of one.
     render(
       <ToolResultCard
         part={part({
           state: 'output-available',
-          toolName: 'addPhotoToMedia',
-          input: { photoId: 'abc', alt: 'mountain lake' },
+          toolName: 'addPhotosToMedia',
+          input: { photos: [{ photoId: 'abc', alt: 'mountain lake' }] },
           output: {
-            content: [{ type: 'text', text: 'Saved.' }],
-            structuredContent: { id: 'media-1', url: '/media/unsplash-abc.jpg', alt: 'mountain lake', credit: 'Jane Doe', creditUrl: 'https://unsplash.com/@jane?utm_source=payload-eve-chat&utm_medium=referral' },
+            content: [{ type: 'text', text: 'Saved 1 photo to Media.' }],
+            structuredContent: {
+              saved: [{ id: 'media-1', url: '/media/unsplash-abc.jpg', alt: 'mountain lake', credit: 'Jane Doe', creditUrl: 'https://unsplash.com/@jane?utm_source=payload-eve-chat&utm_medium=referral' }],
+              failed: [],
+            },
           },
         })}
       />,
@@ -302,7 +306,6 @@ describe('ToolResultCard — media_image with credit', () => {
     const creditLink = screen.getByRole('link', { name: /Jane Doe/ }) as HTMLAnchorElement
     expect(creditLink.href).toContain('utm_source=payload-eve-chat')
     expect(creditLink.getAttribute('target')).toBe('_blank')
-    expect(screen.getByText(/Unsplash/)).toBeTruthy()
   })
 
   it('renders media_image WITHOUT credit when generateImage (backward-compat)', () => {

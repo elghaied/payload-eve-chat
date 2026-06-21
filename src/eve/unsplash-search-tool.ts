@@ -58,14 +58,15 @@ export async function searchPhotosHandler({
 /**
  * Payload MCP tool: search Unsplash for real photos matching a query.
  * Returns a thumbnail grid of candidates (photoId, thumbUrl, photographer, …) via structuredContent.
- * No image download or Media write occurs here — call addPhotoToMedia to save a chosen photo.
+ * No image download or Media write occurs here — call addPhotosToMedia to save chosen photos.
  */
 export const searchPhotosTool = defineTool({
   description:
     'Search Unsplash for real photos matching a query. Returns up to 12 thumbnail candidates ' +
     '(photoId, thumbUrl, photographer, description, photographerUrl, unsplashUrl) via structuredContent. ' +
-    'No image is downloaded or stored at this step. After the user picks a photo, call addPhotoToMedia ' +
-    'to upload it to the Media collection and get an embed id. Only call when a real photograph is requested.',
+    'No image is downloaded or stored at this step. After the user picks one or more photos, call ' +
+    'addPhotosToMedia to upload them to the Media collection and get embed ids. Only call when a real ' +
+    'photograph is requested.',
   input: z.object({
     query: z.string().min(1).max(200).describe('Search query, e.g. "mountain lake at dusk".'),
     perPage: z

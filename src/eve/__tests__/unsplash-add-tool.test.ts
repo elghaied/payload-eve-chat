@@ -7,7 +7,7 @@ vi.mock('../unsplash', () => ({
 }))
 
 import { assertUnsplashUrl as mockAssertUnsplashUrl, getPhoto as mockGetPhoto, triggerDownload as mockTriggerDownload } from '../unsplash'
-import { addPhotoToMediaHandler } from '../unsplash-add-tool'
+import { savePhotoToMedia } from '../unsplash-add-tool'
 import type { PayloadRequest } from 'payload'
 
 const PHOTO = {
@@ -35,24 +35,26 @@ function makeImageFetch(contentType = 'image/jpeg') {
   })
 }
 
-function makeArgs(inputOverrides: Record<string, unknown> = {}, req?: PayloadRequest) {
+function makeArgs(overrides: Record<string, unknown> = {}, req?: PayloadRequest) {
   return {
     authorizedMCP: { overrideAccess: true, user: { id: 'u1' } },
-    input: { photoId: 'abc123', alt: 'mountain lake', ...inputOverrides },
+    photoId: 'abc123',
+    alt: 'mountain lake',
     req: req ?? makeReq(),
+    ...overrides,
   }
 }
 
 beforeEach(() => { vi.clearAllMocks() })
 
-describe('addPhotoToMediaHandler', () => {
-  it('fetches the photo, triggers download, saves to Media, returns structuredContent', async () => {
+describe('savePhotoToMedia', () => {
+  it('fetches the photo, triggers download, saves to Media, returns the saved doc', async () => {
     vi.mocked(mockGetPhoto).mockResolvedValueOnce(PHOTO)
     vi.mocked(mockTriggerDownload).mockResolvedValueOnce(undefined)
     const mockImageFetch = makeImageFetch()
     vi.stubGlobal('fetch', mockImageFetch)
     const req = makeReq({ id: 'media-1', url: '/media/unsplash-abc123.jpg', alt: 'mountain lake' })
-    const result = await addPhotoToMediaHandler(makeArgs({}, req))
+    const result = await savePhotoToMedia(makeArgs({}, req))
     expect(mockGetPhoto).toHaveBeenCalledWith('abc123')
     expect(mockTriggerDownload).toHaveBeenCalledWith('https://api.unsplash.com/photos/abc123/download')
     expect(mockImageFetch).toHaveBeenCalledWith(
@@ -69,15 +71,15 @@ describe('addPhotoToMediaHandler', () => {
         size: expect.any(Number),
       }),
     }))
-    expect(result.structuredContent).toMatchObject({
+    expect(result.ok).toBe(true)
+    if (!result.ok) throw new Error('expected ok')
+    expect(result.saved).toMatchObject({
       id: 'media-1',
       url: '/media/unsplash-abc123.jpg',
       alt: 'mountain lake',
       credit: 'Jane Doe',
       creditUrl: expect.stringContaining('utm_source=payload-eve-chat'),
     })
-    expect(result.content[0].text).toContain('media-1')
-    expect(result.content[0].text).toContain('Jane Doe')
     vi.unstubAllGlobals()
   })
 
@@ -88,35 +90,37 @@ describe('addPhotoToMediaHandler', () => {
     })
     vi.mocked(mockAssertUnsplashUrl).mockImplementation(() => { throw new Error('Refusing non-Unsplash URL') })
     const req = makeReq()
-    const result = await addPhotoToMediaHandler(makeArgs({}, req))
-    expect(result.isError).toBe(true)
-    expect(result.content[0].text).toContain('SSRF')
+    const result = await savePhotoToMedia(makeArgs({}, req))
+    expect(result.ok).toBe(false)
+    if (result.ok) throw new Error('expected failure')
+    expect(result.error).toContain('SSRF')
     expect(mockTriggerDownload).not.toHaveBeenCalled()
     expect(req.payload.create).not.toHaveBeenCalled()
   })
 
-  it('returns isError when fetch resolves with a non-ok status (e.g. 403)', async () => {
+  it('fails when fetch resolves with a non-ok status (e.g. 403)', async () => {
     vi.mocked(mockGetPhoto).mockResolvedValueOnce(PHOTO)
     vi.mocked(mockAssertUnsplashUrl).mockReturnValue(undefined as never)
     vi.mocked(mockTriggerDownload).mockResolvedValueOnce(undefined)
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 403 }))
     const req = makeReq()
-    const result = await addPhotoToMediaHandler(makeArgs({}, req))
-    expect(result.isError).toBe(true)
-    expect(result.content[0].text).toContain('HTTP 403')
+    const result = await savePhotoToMedia(makeArgs({}, req))
+    expect(result.ok).toBe(false)
+    if (result.ok) throw new Error('expected failure')
+    expect(result.error).toContain('HTTP 403')
     expect(req.payload.create).not.toHaveBeenCalled()
     vi.unstubAllGlobals()
   })
 
-  it('refuses redirects (SSRF redirect bypass): fetch 302 returns isError and does not call payload.create', async () => {
+  it('refuses redirects (SSRF redirect bypass): fetch 302 fails and does not call payload.create', async () => {
     vi.mocked(mockGetPhoto).mockResolvedValueOnce(PHOTO)
     vi.mocked(mockAssertUnsplashUrl).mockReturnValue(undefined as never)
     vi.mocked(mockTriggerDownload).mockResolvedValueOnce(undefined)
     const mockImageFetch = vi.fn().mockResolvedValue({ ok: false, status: 302 })
     vi.stubGlobal('fetch', mockImageFetch)
     const req = makeReq()
-    const result = await addPhotoToMediaHandler(makeArgs({}, req))
-    expect(result.isError).toBe(true)
+    const result = await savePhotoToMedia(makeArgs({}, req))
+    expect(result.ok).toBe(false)
     expect(mockImageFetch).toHaveBeenCalledWith(
       expect.any(String),
       expect.objectContaining({ redirect: 'manual' }),
@@ -136,9 +140,10 @@ describe('addPhotoToMediaHandler', () => {
       arrayBuffer: async () => bigBuffer.buffer,
     }))
     const req = makeReq()
-    const result = await addPhotoToMediaHandler(makeArgs({}, req))
-    expect(result.isError).toBe(true)
-    expect(result.content[0].text).toContain('too large')
+    const result = await savePhotoToMedia(makeArgs({}, req))
+    expect(result.ok).toBe(false)
+    if (result.ok) throw new Error('expected failure')
+    expect(result.error).toContain('too large')
     expect(req.payload.create).not.toHaveBeenCalled()
     vi.unstubAllGlobals()
   })
@@ -148,9 +153,10 @@ describe('addPhotoToMediaHandler', () => {
     vi.mocked(mockTriggerDownload).mockResolvedValueOnce(undefined)
     vi.stubGlobal('fetch', makeImageFetch('text/html'))
     const req = makeReq()
-    const result = await addPhotoToMediaHandler(makeArgs({}, req))
-    expect(result.isError).toBe(true)
-    expect(result.content[0].text).toContain('image')
+    const result = await savePhotoToMedia(makeArgs({}, req))
+    expect(result.ok).toBe(false)
+    if (result.ok) throw new Error('expected failure')
+    expect(result.error).toContain('image')
     expect(req.payload.create).not.toHaveBeenCalled()
     vi.unstubAllGlobals()
   })
@@ -158,9 +164,10 @@ describe('addPhotoToMediaHandler', () => {
   it('surfaces Unsplash auth error when getPhoto throws 401', async () => {
     vi.mocked(mockGetPhoto).mockRejectedValueOnce(Object.assign(new Error('Unsplash error 401'), { status: 401 }))
     const req = makeReq()
-    const result = await addPhotoToMediaHandler(makeArgs({}, req))
-    expect(result.isError).toBe(true)
-    expect(result.content[0].text).toContain('auth')
+    const result = await savePhotoToMedia(makeArgs({}, req))
+    expect(result.ok).toBe(false)
+    if (result.ok) throw new Error('expected failure')
+    expect(result.error).toContain('auth')
   })
 
   it('proceeds even when triggerDownload throws (non-fatal)', async () => {
@@ -169,9 +176,10 @@ describe('addPhotoToMediaHandler', () => {
     const mockImageFetch = makeImageFetch()
     vi.stubGlobal('fetch', mockImageFetch)
     const req = makeReq({ id: 'media-2', url: '/media/unsplash-abc123.jpg', alt: 'alt' })
-    const result = await addPhotoToMediaHandler(makeArgs({}, req))
-    expect(result.isError).toBeUndefined()
-    expect(result.structuredContent.id).toBe('media-2')
+    const result = await savePhotoToMedia(makeArgs({}, req))
+    expect(result.ok).toBe(true)
+    if (!result.ok) throw new Error('expected ok')
+    expect(result.saved.id).toBe('media-2')
     vi.unstubAllGlobals()
   })
 })

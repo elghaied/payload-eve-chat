@@ -40,21 +40,22 @@ export async function addPhotosToMediaHandler({
 }
 
 /**
- * Payload MCP tool: save MULTIPLE chosen Unsplash photos to Media in ONE call (the user
- * multi-selects in the searchPhotos grid and clicks "Add selected"). Each photo is saved with
+ * Payload MCP tool: save one or more chosen Unsplash photos to Media in ONE call (the user
+ * selects photos in the searchPhotos grid and clicks "Add selected"). This is the ONLY tool for
+ * saving Unsplash photos — pass a single photo as an array of one. Each photo is saved with
  * photographer attribution; partial failures are reported in `failed`. Requires
- * UNSPLASH_ACCESS_KEY. Same SSRF/size guards as addPhotoToMedia (shared savePhotoToMedia).
+ * UNSPLASH_ACCESS_KEY. SSRF/size guards live in the shared savePhotoToMedia helper.
  *
  * To use the saved photos, embed `![media:<id>]()` ONLY inside the article body via
  * createDocumentFromMarkdown — never print the embed codes as a chat message.
  */
 export const addPhotosToMediaTool = defineTool({
   description:
-    'Save MULTIPLE Unsplash photos to the Payload Media collection in one call (use when the user selected ' +
-    'several photos from searchPhotos). Input: photos:[{photoId, alt}]. Returns the saved Media docs. To use ' +
-    'them, embed `![media:<id>]()` ONLY inside the article body (createDocumentFromMarkdown) with a caption ' +
-    '`_Photo by [Name](creditUrl) on Unsplash_` each. Do NOT print embed codes as a chat message — the saved ' +
-    'photos card already shows them.',
+    'Save Unsplash photos to the Payload Media collection in one call. This is the ONLY tool for saving ' +
+    'Unsplash photos — use it for a single photo (pass an array of one) or many. Input: photos:[{photoId, alt}] ' +
+    'with photoIds from searchPhotos. Returns the saved Media docs. To use them, embed `![media:<id>]()` ONLY ' +
+    'inside the article body (createDocumentFromMarkdown) with a caption `_Photo by [Name](creditUrl) on ' +
+    'Unsplash_` each. Do NOT print embed codes as a chat message — the saved photos card already shows them.',
   input: z.object({
     photos: z
       .array(
@@ -65,6 +66,6 @@ export const addPhotosToMediaTool = defineTool({
       )
       .min(1)
       .max(MAX_PHOTOS)
-      .describe('The chosen photos to save (max 10).'),
+      .describe('The chosen photos to save (one or more, max 10).'),
   }),
 }).handler(addPhotosToMediaHandler as never)

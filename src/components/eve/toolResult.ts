@@ -275,9 +275,10 @@ export function describeToolResult(part: EveDynamicToolPart): ToolResultView | n
     if (text) return { kind: 'text', text }
   }
 
-  // generateImage / addPhotoToMedia — our custom MCP tools. doc is stripped at the wire; structuredContent passes through.
-  // Detection: name === 'generateImage' or 'addPhotoToMedia' AND structuredContent has id + url.
-  if ((name === 'generateImage' || name === 'addPhotoToMedia') && isObj(output)) {
+  // generateImage — our custom MCP tool. doc is stripped at the wire; structuredContent passes through.
+  // Detection: name === 'generateImage' AND structuredContent has id + url. (Unsplash photos always
+  // go through addPhotosToMedia above, even a single one.)
+  if (name === 'generateImage' && isObj(output)) {
     const sc = output['structuredContent']
     if (isObj(sc) && typeof sc['url'] === 'string' && typeof sc['id'] !== 'undefined') {
       return {
@@ -352,7 +353,6 @@ export function runningLabel(part: EveDynamicToolPart): string {
   }
   if (name === 'generateImage') return 'Generating image…'
   if (name === 'searchPhotos') return 'Searching Unsplash…'
-  if (name === 'addPhotoToMedia') return 'Saving photo to Media…'
   if (name === 'addPhotosToMedia') return 'Saving photos to Media…'
   const titleish =
     isObj(input) && isObj(input['data']) && typeof (input['data'] as AnyRecord)['title'] === 'string'

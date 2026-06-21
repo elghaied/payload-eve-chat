@@ -14,7 +14,6 @@ import { Conversations } from './collections/Conversations'
 import { createDocumentFromMarkdownTool } from './eve/markdown-tool'
 import { generateImageTool } from './eve/generate-image-tool'
 import { searchPhotosTool } from './eve/unsplash-search-tool'
-import { addPhotoToMediaTool } from './eve/unsplash-add-tool'
 import { addPhotosToMediaTool } from './eve/unsplash-add-multi-tool'
 
 const filename = fileURLToPath(import.meta.url)
@@ -90,10 +89,14 @@ export default buildConfig({
       tools: {
         createDocumentFromMarkdown: createDocumentFromMarkdownTool,
         generateImage: generateImageTool,
+        // A SINGLE Unsplash→Media tool (addPhotosToMedia, accepts one or more photos).
+        // We deliberately do NOT also register a near-identical singular tool: Eve
+        // discovers MCP tools by fuzzy name/description match and will reuse whichever
+        // similar tool it already discovered, so two look-alike tools made it call the
+        // single-add tool N times instead of the batch tool once.
         ...(process.env.UNSPLASH_ACCESS_KEY
           ? {
               searchPhotos: searchPhotosTool,
-              addPhotoToMedia: addPhotoToMediaTool,
               addPhotosToMedia: addPhotosToMediaTool,
             }
           : {}),

@@ -135,7 +135,7 @@ If generating a hero image: call `generateImage` (SP-B) before calling
 When the user requests a real photo (or you have `UNSPLASH_ACCESS_KEY` available and a real photograph suits the article):
 
 1. Call `searchPhotos({ query: "<topic>", perPage: 6 })`. An in-chat grid of thumbnail candidates appears; the user **multi-selects photos and clicks "Add selected"**.
-2. When asked to add the chosen photos, call **`addPhotosToMedia({ photos: [{ photoId, alt }, ...] })`** ONCE with all of them (write a fitting `alt` per photo from its description). For a single one-off photo you may use `addPhotoToMedia({ photoId, alt })`.
+2. When asked to add the chosen photos, call **`addPhotosToMedia({ photos: [{ photoId, alt }, ...] })`** ONCE with all of them (write a fitting `alt` per photo from its description). This is the only Unsplash→Media tool; for a single photo, pass an array of one.
    - They return the saved Media docs (`{ id, url, credit, creditUrl }`) via `structuredContent`; an in-chat saved-photos card appears automatically.
    - **Do NOT print the `![media:<id>]()` embed code or the credit line as a chat message** — the card already shows it. That Markdown goes ONLY inside the article body (next step).
 3. Embed each image placeholder in the article body:
@@ -151,8 +151,8 @@ When the user requests a real photo (or you have `UNSPLASH_ACCESS_KEY` available
 ```
 1. searchPhotos({ query: "mountain lake at dusk", perPage: 6 })
    → structuredContent.photos: [{ photoId, thumbUrl, photographer, ... }, ...]
-2. addPhotoToMedia({ photoId: "abc123", alt: "mountain lake at dusk" })
-   → structuredContent: { id: "media-1", url: "/media/unsplash-abc123.jpg", credit: "Jane Doe", creditUrl: "https://unsplash.com/@jane?utm_source=payload-eve-chat&utm_medium=referral" }
+2. addPhotosToMedia({ photos: [{ photoId: "abc123", alt: "mountain lake at dusk" }] })
+   → structuredContent.saved: [{ id: "media-1", url: "/media/unsplash-abc123.jpg", credit: "Jane Doe", creditUrl: "https://unsplash.com/@jane?utm_source=payload-eve-chat&utm_medium=referral" }]
 3. createDocumentFromMarkdown({
      collectionSlug: "posts",
      data: { title: "...", status: "draft" },
@@ -185,7 +185,7 @@ A well-structured Lexical article:
 | `findDocuments` | Look up existing posts or media by query |
 | `generateImage` *(SP-B)* | Generate an image, save to Payload Media, return `{ id, url }`. **Required inputs:** `prompt` (string) and `alt` (string, non-empty). |
 | `searchPhotos` *(Unsplash)* | Search Unsplash for real photos. Returns `structuredContent.photos[]`. Required input: `query`. Optional: `perPage` (default 6). |
-| `addPhotoToMedia` *(Unsplash)* | Download a chosen Unsplash photo and save to Media. Returns `{ id, url, credit, creditUrl }`. Required inputs: `photoId`, `alt`. |
+| `addPhotosToMedia` *(Unsplash)* | Download one or more chosen Unsplash photos and save to Media. Returns `structuredContent.saved[]` of `{ id, url, credit, creditUrl }`. Required input: `photos: [{ photoId, alt }, ...]` (pass an array of one for a single photo). |
 
 MCP tool names arrive prefixed (`connection__payload-mcp__<tool>`). You call them by their short
 name through the connection — the framework resolves the prefix.

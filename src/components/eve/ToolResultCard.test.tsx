@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import type { EveDynamicToolPart } from 'eve/react'
 import { ToolResultCard } from './ToolResultCard'
 
@@ -205,56 +205,82 @@ describe('ToolResultCard — photo_search', () => {
     expect(screen.getByText('Searching Unsplash…')).toBeTruthy()
   })
 
-  it('calls onSelectPhoto with the photoId when a thumbnail is clicked', () => {
-    const onSelectPhoto = vi.fn()
-    render(
-      <ToolResultCard
-        onSelectPhoto={onSelectPhoto}
-        part={part({
-          state: 'output-available',
-          toolName: 'searchPhotos',
-          input: { query: 'cats', perPage: 6 },
-          output: {
-            content: [{ type: 'text', text: 'Found 2 photos.' }],
-            structuredContent: {
-              photos: [
-                { photoId: 'abc', description: 'fluffy cat', thumbUrl: 'https://images.unsplash.com/thumb1', photographer: 'Jane Doe', photographerUrl: 'https://unsplash.com/@jane', unsplashUrl: 'https://unsplash.com/photos/abc' },
-                { photoId: 'def', description: 'orange tabby', thumbUrl: 'https://images.unsplash.com/thumb2', photographer: 'Bob Smith', photographerUrl: 'https://unsplash.com/@bob', unsplashUrl: 'https://unsplash.com/photos/def' },
-              ],
-            },
-          },
-        })}
-      />,
-    )
-    // The "Click a photo to use it" hint appears when selection is enabled.
-    expect(screen.getByText(/Click a photo to use it/i)).toBeTruthy()
-    // Each thumbnail is a button labelled by its description; clicking it selects that photo.
-    screen.getByRole('button', { name: /Use photo: orange tabby/i }).click()
-    expect(onSelectPhoto).toHaveBeenCalledWith('def', 'orange tabby')
+  const twoPhotoSearch = () =>
+    part({
+      state: 'output-available',
+      toolName: 'searchPhotos',
+      input: { query: 'cats', perPage: 6 },
+      output: {
+        content: [{ type: 'text', text: 'Found 2 photos.' }],
+        structuredContent: {
+          photos: [
+            { photoId: 'abc', description: 'fluffy cat', thumbUrl: 'https://images.unsplash.com/thumb1', photographer: 'Jane Doe', photographerUrl: 'https://unsplash.com/@jane', unsplashUrl: 'https://unsplash.com/photos/abc' },
+            { photoId: 'def', description: 'orange tabby', thumbUrl: 'https://images.unsplash.com/thumb2', photographer: 'Bob Smith', photographerUrl: 'https://unsplash.com/@bob', unsplashUrl: 'https://unsplash.com/photos/def' },
+          ],
+        },
+      },
+    })
+
+  it('multi-selects photos and calls onAddPhotos with all chosen on "Add selected"', () => {
+    const onAddPhotos = vi.fn()
+    render(<ToolResultCard onAddPhotos={onAddPhotos} part={twoPhotoSearch()} />)
+    // Select two photos by toggling their thumbnails.
+    fireEvent.click(screen.getByRole('button', { name: /Select photo: fluffy cat/i }))
+    fireEvent.click(screen.getByRole('button', { name: /Select photo: orange tabby/i }))
+    // The add button reflects the count; clicking it submits the batch.
+    fireEvent.click(screen.getByRole('button', { name: /Add 2 selected/i }))
+    expect(onAddPhotos).toHaveBeenCalledTimes(1)
+    expect(onAddPhotos).toHaveBeenCalledWith([
+      { photoId: 'abc', description: 'fluffy cat' },
+      { photoId: 'def', description: 'orange tabby' },
+    ])
   })
 
-  it('does not render selection buttons (or the hint) when onSelectPhoto is absent', () => {
-    render(
+  it('does not submit when nothing is selected (Add button disabled)', () => {
+    const onAddPhotos = vi.fn()
+    render(<ToolResultCard onAddPhotos={onAddPhotos} part={twoPhotoSearch()} />)
+    const addBtn = screen.getByRole('button', { name: /Add selected/i }) as HTMLButtonElement
+    expect(addBtn.disabled).toBe(true)
+    addBtn.click()
+    expect(onAddPhotos).not.toHaveBeenCalled()
+  })
+
+  it('toggling a photo off removes it from the selection', () => {
+    const onAddPhotos = vi.fn()
+    render(<ToolResultCard onAddPhotos={onAddPhotos} part={twoPhotoSearch()} />)
+    const first = screen.getByRole('button', { name: /Select photo: fluffy cat/i })
+    fireEvent.click(first) // select
+    fireEvent.click(first) // deselect
+    fireEvent.click(screen.getByRole('button', { name: /Select photo: orange tabby/i }))
+    fireEvent.click(screen.getByRole('button', { name: /Add 1 selected/i }))
+    expect(onAddPhotos).toHaveBeenCalledWith([{ photoId: 'def', description: 'orange tabby' }])
+  })
+
+  it('renders a media_images grid (batch) with no raw JSON', () => {
+    const { container } = render(
       <ToolResultCard
         part={part({
           state: 'output-available',
-          toolName: 'searchPhotos',
-          input: { query: 'cats' },
+          toolName: 'addPhotosToMedia',
+          toolMetadata: { eve: { kind: 'tool-call', name: 'connection__payload-mcp__addPhotosToMedia' } },
+          input: {},
           output: {
-            content: [{ type: 'text', text: 'Found 1.' }],
+            content: [{ type: 'text', text: 'Saved 2 photos to Media.' }],
             structuredContent: {
-              photos: [
-                { photoId: 'abc', description: 'fluffy cat', thumbUrl: 'https://images.unsplash.com/thumb1', photographer: 'Jane Doe', photographerUrl: 'https://unsplash.com/@jane', unsplashUrl: 'https://unsplash.com/photos/abc' },
+              saved: [
+                { id: 'm1', url: '/media/a.jpg', alt: 'a', credit: 'Jane Doe', creditUrl: 'https://unsplash.com/@jane' },
+                { id: 'm2', url: '/media/b.jpg', alt: 'b', credit: 'Bob Smith', creditUrl: 'https://unsplash.com/@bob' },
               ],
+              failed: [],
             },
           },
         })}
       />,
     )
-    expect(screen.queryByText(/Click a photo to use it/i)).toBeNull()
-    // The disabled button still renders but is not actionable; the hint is the user-facing signal.
-    const btn = screen.getByRole('button', { name: /Use photo: fluffy cat/i }) as HTMLButtonElement
-    expect(btn.disabled).toBe(true)
+    expect(screen.getByText(/Saved 2 photos to Media/i)).toBeTruthy()
+    expect(container.querySelectorAll('img').length).toBe(2)
+    expect(container.querySelector('pre')).toBeNull()
+    expect(container.textContent).not.toContain('structuredContent')
   })
 })
 

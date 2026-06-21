@@ -167,7 +167,7 @@ function renderToolPart(
   key: string,
   opts: {
     onRespondInput?: (response: InputResponseValue) => void
-    onSelectPhoto?: (photoId: string, description: string) => void
+    onAddPhotos?: (photos: { photoId: string; description: string }[]) => void
     busy?: boolean
   } = {},
 ): React.ReactNode {
@@ -193,7 +193,7 @@ function renderToolPart(
     <ToolResultCard
       key={key}
       part={part}
-      onSelectPhoto={opts.onSelectPhoto}
+      onAddPhotos={opts.onAddPhotos}
       busy={opts.busy}
     />
   )
@@ -473,18 +473,21 @@ const EveChatInner: React.FC<EveChatProps & { initialEvents: unknown[]; voiceAva
     [agent],
   )
 
-  // Click-to-select on an Unsplash photo_search card: tell Eve to use that exact photo.
-  // We send a message naming the photoId so she calls addPhotoToMedia deterministically
-  // (no need for the user to copy ids or describe which one).
-  const handleSelectPhoto = useCallback(
-    (photoId: string, description: string) => {
+  // "Add selected" on an Unsplash photo_search card: save ALL chosen photos in ONE turn.
+  // We send one message listing the photoIds so Eve calls addPhotosToMedia once (Eve's loop
+  // is one step per turn, so a single batch tool call — not N calls — keeps it to one turn).
+  const handleAddPhotos = useCallback(
+    (photos: { photoId: string; description: string }[]) => {
       if (agent.status === 'submitted' || agent.status === 'streaming') return
+      if (photos.length === 0) return
       setStalled(false)
+      const list = photos.map((p) => `- ${p.photoId}: ${p.description}`).join('\n')
       void agent.send({
         message:
-          `Use this Unsplash photo (photoId: "${photoId}"${description ? ` — ${description}` : ''}). ` +
-          `Call addPhotoToMedia with that exact photoId and a fitting alt, then use the returned media id ` +
-          `as ![media:<id>]() with the photographer credit.`,
+          `Add these ${photos.length} Unsplash photo(s) to Media in ONE call: call addPhotosToMedia with ` +
+          `photos: [{ photoId, alt }] for all of them (write a fitting alt from each description). Use the ` +
+          `returned media ids in the article via ![media:<id>]() with a "_Photo by [Name](creditUrl) on ` +
+          `Unsplash_" caption — do NOT print the embed code as a message.\n${list}`,
       })
     },
     [agent],
@@ -561,7 +564,7 @@ const EveChatInner: React.FC<EveChatProps & { initialEvents: unknown[]; voiceAva
                         if (part.type === 'dynamic-tool') {
                           return renderToolPart(part, partKey, {
                             onRespondInput: handleRespondInput,
-                            onSelectPhoto: handleSelectPhoto,
+                            onAddPhotos: handleAddPhotos,
                             busy: agentBusy,
                           })
                         }

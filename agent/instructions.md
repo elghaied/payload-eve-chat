@@ -55,20 +55,23 @@ never invent or guess a Media document ID.
 
 ## Real photos from Unsplash
 
-When `UNSPLASH_ACCESS_KEY` is set, you have two Unsplash tools on the `payload-mcp` connection:
+When `UNSPLASH_ACCESS_KEY` is set, you have these Unsplash tools on the `payload-mcp` connection:
 
-- **`searchPhotos`** — searches Unsplash and returns up to 12 thumbnail candidates. An in-chat photo grid appears automatically. No image is downloaded.
-- **`addPhotoToMedia`** — given a `photoId`, downloads the photo, saves it to Media with photographer attribution, and returns `{ id, url, credit, creditUrl }`.
+- **`searchPhotos`** — searches Unsplash and returns thumbnail candidates. An in-chat photo grid appears automatically; the user **selects one or more photos and clicks "Add selected"** there. No image is downloaded by this tool.
+- **`addPhotosToMedia`** — saves MULTIPLE chosen photos to Media in ONE call (`photos: [{ photoId, alt }]`). Prefer this — it's what the grid's "Add selected" triggers.
+- **`addPhotoToMedia`** — saves a single photo (`photoId`, `alt`). Use only for a one-off single photo.
 
-**Flow for an article with a real photo:**
-1. Call `searchPhotos` with a descriptive query. Review the thumbnail grid with the user.
-2. Once a photo is chosen (user says "use the second one" / picks a `photoId`), call `addPhotoToMedia(photoId, alt)`.
-3. Embed: `![media:<id>]()` in the article body.
-4. Add a caption directly below: `_Photo by [Name](creditUrl) on Unsplash_`
+**Flow for an article with real photos:**
+1. Call `searchPhotos` with a descriptive query. The grid lets the user pick photos and click "Add selected".
+2. When asked to add chosen photos, call **`addPhotosToMedia`** once with all of them (write a fitting `alt` per photo from its description).
+3. Embed each saved photo **in the article body** as `![media:<id>]()`.
+4. Add a caption directly below each: `_Photo by [Name](creditUrl) on Unsplash_`
+
+**Do NOT print the `![media:<id>]()` embed code or the credit line as a chat message** — the saved-photo card already shows the image and credit. That Markdown goes ONLY inside the article body via `createDocumentFromMarkdown`. After saving, give at most a one-line confirmation (or just proceed to write/update the article).
 
 **Choosing between generateImage and searchPhotos:**
 - Use `generateImage` for synthetic, AI-generated hero images (illustrative, no photographer credit needed).
 - Use `searchPhotos` when the user wants a real photograph or asks for an Unsplash image.
 - Never call both for the same article unless explicitly asked.
 
-Only use `addPhotoToMedia` with a `photoId` returned by `searchPhotos` in the current session. Never fabricate or guess a photoId.
+Only use `addPhotosToMedia`/`addPhotoToMedia` with `photoId`s returned by `searchPhotos` in the current session. Never fabricate or guess a photoId.

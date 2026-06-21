@@ -9,6 +9,14 @@ export type AdminRecord = { id: string; label: string; href?: string }
 export type TodoStatus = 'pending' | 'in_progress' | 'completed' | 'cancelled'
 export type TodoItem = { content: string; status: TodoStatus; priority?: string }
 
+export type MediaImageItem = {
+  id: string
+  url: string
+  alt: string
+  credit?: string
+  creditUrl?: string
+}
+
 export type PhotoCandidate = {
   photoId: string
   description: string
@@ -27,6 +35,7 @@ export type ToolResultView =
   | { kind: 'skill'; name: string }
   | { kind: 'text'; text: string }
   | { kind: 'media_image'; id: string; url: string; alt: string; credit?: string; creditUrl?: string }
+  | { kind: 'media_images'; images: MediaImageItem[]; failedCount: number }
   | { kind: 'photo_search'; query: string; photos: PhotoCandidate[] }
   // Last-resort fallback: a clean "✓ <tool>" line — NEVER a raw-JSON dump.
   | { kind: 'done'; tool: string }
@@ -245,6 +254,27 @@ export function describeToolResult(part: EveDynamicToolPart): ToolResultView | n
     }
   }
 
+  // addPhotosToMedia (batch) — structuredContent { saved: MediaImageItem[], failed: [...] }.
+  if (name === 'addPhotosToMedia' && isObj(output)) {
+    const sc = output['structuredContent']
+    if (isObj(sc) && Array.isArray(sc['saved'])) {
+      const images: MediaImageItem[] = (sc['saved'] as unknown[])
+        .filter(isObj)
+        .map((s) => ({
+          id: String(s['id'] ?? ''),
+          url: typeof s['url'] === 'string' ? (s['url'] as string) : '',
+          alt: typeof s['alt'] === 'string' ? (s['alt'] as string) : '',
+          credit: typeof s['credit'] === 'string' ? (s['credit'] as string) : undefined,
+          creditUrl: typeof s['creditUrl'] === 'string' ? (s['creditUrl'] as string) : undefined,
+        }))
+        .filter((i) => i.url)
+      const failedCount = Array.isArray(sc['failed']) ? (sc['failed'] as unknown[]).length : 0
+      return { kind: 'media_images', images, failedCount }
+    }
+    const text = mcpText(output)
+    if (text) return { kind: 'text', text }
+  }
+
   // generateImage / addPhotoToMedia — our custom MCP tools. doc is stripped at the wire; structuredContent passes through.
   // Detection: name === 'generateImage' or 'addPhotoToMedia' AND structuredContent has id + url.
   if ((name === 'generateImage' || name === 'addPhotoToMedia') && isObj(output)) {
@@ -323,6 +353,7 @@ export function runningLabel(part: EveDynamicToolPart): string {
   if (name === 'generateImage') return 'Generating image…'
   if (name === 'searchPhotos') return 'Searching Unsplash…'
   if (name === 'addPhotoToMedia') return 'Saving photo to Media…'
+  if (name === 'addPhotosToMedia') return 'Saving photos to Media…'
   const titleish =
     isObj(input) && isObj(input['data']) && typeof (input['data'] as AnyRecord)['title'] === 'string'
       ? ` “${(input['data'] as AnyRecord)['title'] as string}”`

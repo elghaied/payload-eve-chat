@@ -1,16 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 
-// Mock eve/client so buildUserContent stays unit-level
-vi.mock('eve/client', () => ({
-  createDataUrlFilePart: vi.fn(({ bytes, mediaType, filename }: { bytes: Uint8Array; mediaType: string; filename?: string }) => ({
-    type: 'file' as const,
-    data: `data:${mediaType};base64,${Buffer.from(bytes).toString('base64')}`,
-    mediaType,
-    filename,
-  })),
-  createTextWithFileContent: vi.fn(),
-}))
-
 // Stub fetch for data URL reads
 vi.stubGlobal('fetch', async (_url: string) => ({
   ok: true,

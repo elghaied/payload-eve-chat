@@ -29,18 +29,6 @@ function makeDefaultFetchStub() {
   })
 }
 
-// ---- Mock eve/client so test stays unit-level ----
-
-vi.mock('eve/client', () => ({
-  createDataUrlFilePart: vi.fn(({ bytes, filename, mediaType }: { bytes: Uint8Array; filename?: string; mediaType: string }) => ({
-    type: 'file' as const,
-    data: `data:${mediaType};base64,${Buffer.from(bytes).toString('base64')}`,
-    mediaType,
-    filename,
-  })),
-  createTextWithFileContent: vi.fn(),
-}))
-
 import { buildUserContent } from './fileParts'
 
 beforeEach(() => makeDefaultFetchStub())

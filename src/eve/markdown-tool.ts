@@ -65,6 +65,10 @@ export const createDocumentFromMarkdownTool = defineTool({
         text: `Created ${input.collectionSlug} document (id: ${doc.id}).`,
       },
     ],
+    // structuredContent passes through finalizeToolResponse (not stripped like doc).
+    // Enables describeToolResult to produce a records card from real MCP wire output.
+    structuredContent: { id: doc.id, collectionSlug: input.collectionSlug },
+    // doc retained for test fixtures and any non-MCP callers; stripped at MCP wire layer.
     doc: doc as unknown as Record<string, unknown>,
   }
 })

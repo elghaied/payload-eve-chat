@@ -16,6 +16,7 @@ export type ToolResultView =
   | { kind: 'discovery'; connection?: string; tools: string[]; count: number }
   | { kind: 'todos'; todos: TodoItem[]; total: number; completed: number }
   | { kind: 'text'; text: string }
+  | { kind: 'media_image'; id: string; url: string; alt: string }
   // Last-resort fallback: a clean "✓ <tool>" line — NEVER a raw-JSON dump.
   | { kind: 'done'; tool: string }
 
@@ -118,6 +119,22 @@ function mcpText(output: AnyRecord): string | undefined {
 }
 
 /**
+ * Extract and parse the first fenced ```json block from a text string.
+ * Built-in plugin-mcp tools (createDocument, findDocuments, etc.) embed the created/found
+ * document as a fenced ```json block inside content[0].text. Returns null if none found or
+ * JSON parse fails.
+ */
+export function parseJsonBlock(text: string): unknown | null {
+  const m = text.match(/```json\r?\n([\s\S]*?)\r?\n```/)
+  if (!m || !m[1]) return null
+  try {
+    return JSON.parse(m[1])
+  } catch {
+    return null
+  }
+}
+
+/**
  * Describe a completed tool part for rendering. Returns null if the part isn't a finished
  * tool result (caller handles running/error/denied/HITL states separately).
  */
@@ -192,26 +209,52 @@ export function describeToolResult(part: EveDynamicToolPart): ToolResultView | n
     }
   }
 
-  // MCP tools — { content:[{text}], doc?, isError? }
-  if (isObj(output)) {
-    const doc = output['doc']
+  // generateImage — our custom MCP tool. doc is stripped at the wire; structuredContent passes through.
+  // Detection: name === 'generateImage' AND structuredContent has id + url.
+  if (name === 'generateImage' && isObj(output)) {
+    const sc = output['structuredContent']
+    if (isObj(sc) && typeof sc['url'] === 'string' && typeof sc['id'] !== 'undefined') {
+      return {
+        kind: 'media_image',
+        id: String(sc['id']),
+        url: sc['url'] as string,
+        alt: typeof sc['alt'] === 'string' ? (sc['alt'] as string) : '',
+      }
+    }
+    // structuredContent absent or incomplete → fall through to text from content[0].text
     const text = mcpText(output)
-    if (isObj(doc)) {
+    if (text) return { kind: 'text', text }
+  }
+
+  // MCP tools — { content:[{text}], doc?, structuredContent?, isError? }
+  if (isObj(output)) {
+    const text = mcpText(output)
+    // Priority: doc (test fixtures / non-MCP callers) → structuredContent (real MCP wire, e.g.
+    // createDocumentFromMarkdown which strips doc but emits structuredContent) → fenced ```json
+    // block in content text (built-in plugin-mcp create/find tools).
+    const sc = output['structuredContent']
+    const docRaw: unknown =
+      output['doc'] ??
+      (isObj(sc) && 'id' in sc ? sc : null) ??
+      (text ? parseJsonBlock(text) : null)
+    if (isObj(docRaw)) {
       // List result (PaginatedDocs) → Found N
-      const docs = doc['docs']
+      const docs = docRaw['docs']
       if (Array.isArray(docs)) {
         const slug = collectionSlugOf(part.input, docs.find(isObj))
         return {
           kind: 'records',
           verb: 'Found',
           collection: slug,
-          total: typeof doc['totalDocs'] === 'number' ? (doc['totalDocs'] as number) : docs.length,
+          total: typeof docRaw['totalDocs'] === 'number' ? (docRaw['totalDocs'] as number) : docs.length,
           records: docs.filter(isObj).slice(0, 10).map((d) => toRecord(d, slug)),
         }
       }
-      // Single document
-      const slug = collectionSlugOf(part.input, doc)
-      return { kind: 'records', verb: verbFor(name), collection: slug, records: [toRecord(doc, slug)] }
+      // Single document — prefer collectionSlug from structuredContent when present.
+      const slug =
+        (isObj(sc) && typeof sc['collectionSlug'] === 'string' ? (sc['collectionSlug'] as string) : undefined) ??
+        collectionSlugOf(part.input, docRaw)
+      return { kind: 'records', verb: verbFor(name), collection: slug, records: [toRecord(docRaw, slug)] }
     }
     if (text) return { kind: 'text', text }
   }
@@ -235,6 +278,7 @@ export function runningLabel(part: EveDynamicToolPart): string {
     const url = isObj(input) && typeof input['url'] === 'string' ? hostOf(input['url']) : ''
     return url ? `Reading ${url}…` : 'Reading page…'
   }
+  if (name === 'generateImage') return 'Generating image…'
   const titleish =
     isObj(input) && isObj(input['data']) && typeof (input['data'] as AnyRecord)['title'] === 'string'
       ? ` “${(input['data'] as AnyRecord)['title'] as string}”`

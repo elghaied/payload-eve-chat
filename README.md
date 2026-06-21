@@ -118,6 +118,31 @@ your **Vercel AI Gateway credits** — you don't configure the provider (e.g. Gr
 yourself. To bill your own provider account instead, add it under **AI Gateway → Bring Your Own
 Key**. (Provider web search also bills a small per-search fee on top of tokens.)
 
+### Image generation
+
+Eve can generate hero images for articles using the `generateImage` tool registered in
+`src/eve/generate-image-tool.ts`. The tool calls the **Vercel AI Gateway image model**, saves the
+result to the Payload **Media** collection, and returns a Markdown embed placeholder
+(`![media:<id>]()`) for use in post bodies.
+
+**Cost:** ~$0.02 per image (default model: `google/imagen-4.0-fast-generate-001`).
+
+**Typical flow:**
+1. User asks Eve to write an illustrated article.
+2. Eve calls `generateImage({ prompt: "…", alt: "…" })` → receives `{ id, url }`.
+3. Eve embeds the Media id in the article Markdown: `![media:<id>]()`.
+4. `createDocumentFromMarkdown` converts it to a Lexical UploadNode — a real embedded image block.
+
+**Configuration:**
+```
+EVE_IMAGE_MODEL=google/imagen-4.0-fast-generate-001   # default (~$0.02/image)
+# EVE_IMAGE_MODEL=xai/grok-imagine-image              # also ~$0.02/image
+# EVE_IMAGE_MODEL=bytedance/seedream-4.0              # ~$0.03/image
+```
+
+Eve only calls `generateImage` when the user explicitly requests a hero image or illustrated
+article — not on every post. The tool description and `article-writing` skill both gate it.
+
 ### MCP authentication: dev vs production
 
 In **development**, `/api/mcp` requires no API key (a dev-only `overrideAuth` runs as the first

@@ -3,7 +3,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from '@payloadcms/ui'
 import { useEveAgent } from 'eve/react'
 import type { EveDynamicToolPart } from 'eve/react'
-import { SquareIcon } from 'lucide-react'
+import { PaperclipIcon, SquareIcon } from 'lucide-react'
 import {
   Conversation,
   ConversationContent,
@@ -14,11 +14,20 @@ import { Message, MessageContent, MessageResponse } from '@/components/ai-elemen
 import {
   PromptInput,
   PromptInputFooter,
+  PromptInputHeader,
   type PromptInputMessage,
   PromptInputSubmit,
   PromptInputTextarea,
   PromptInputTools,
+  usePromptInputAttachments,
+  PromptInputActionMenu,
+  PromptInputActionMenuTrigger,
+  PromptInputActionMenuContent,
+  PromptInputActionAddAttachments,
 } from '@/components/ai-elements/prompt-input'
+import type { FileUIPart } from 'ai'
+import { buildUserContent } from './fileParts'
+import { AttachmentPreview } from './AttachmentPreview'
 import { ToolResultCard } from './ToolResultCard'
 import { Reasoning } from '@/components/ai-elements/reasoning'
 import { TooltipProvider } from '@/components/ui/tooltip'
@@ -215,6 +224,42 @@ export const EveChat: React.FC<EveChatProps> = (props) => {
   return <EveChatInner {...props} voiceAvailable={voiceAvailable} initialEvents={events} />
 }
 
+// ── Pre-send attachment strip ─────────────────────────────────────────────────
+
+/**
+ * Reads the PromptInput attachment context (must be rendered inside <PromptInput>)
+ * to display the pre-send strip and report attachment count up to EveChat.
+ */
+function PreSendAttachmentStrip({
+  onCountChange,
+}: {
+  onCountChange: (count: number) => void
+}): React.ReactElement | null {
+  const attachments = usePromptInputAttachments()
+  const count = attachments.files.length
+
+  // Report count to parent so PromptInputSubmit disabled prop can reflect it.
+  React.useEffect(() => {
+    onCountChange(count)
+  }, [count, onCountChange])
+
+  if (count === 0) return null
+
+  return (
+    <PromptInputHeader className="p-1">
+      <div className="flex flex-wrap gap-1">
+        {attachments.files.map((f) => (
+          <AttachmentPreview
+            key={f.id}
+            file={f}
+            onRemove={() => attachments.remove(f.id)}
+          />
+        ))}
+      </div>
+    </PromptInputHeader>
+  )
+}
+
 // ── Inner: the live chat (one useEveAgent instance) ────────────────────────────
 
 const EveChatInner: React.FC<EveChatProps & { initialEvents: unknown[]; voiceAvailable: boolean }> = ({
@@ -233,6 +278,27 @@ const EveChatInner: React.FC<EveChatProps & { initialEvents: unknown[]; voiceAva
   // In-flight guard so a rapid double-submit can't start two sends (which could
   // race two new-session creates / duplicate sidebar entries).
   const sendingRef = useRef(false)
+  /**
+   * Map from confirmed-user-message index → files shown in the post-send bubble.
+   *
+   * Key: the zero-based ordinal of the *confirmed* (non-optimistic) user message at
+   * the time of submission. Computed at submit time as:
+   *   agent.data.messages.filter(m => m.role === 'user' && !m.metadata?.optimistic).length
+   * (i.e. "how many confirmed user messages existed before this turn started").
+   *
+   * In the render loop: count confirmed (non-optimistic) user messages with a
+   * dedicated counter, and look up `pendingFileMap.current.get(counter++)`.
+   * Text-only turns do not push to this map, so their confirmed-message slots return
+   * undefined → no preview, which is correct.
+   *
+   * This replaces the old dense-array approach that used `userMsgIndex++` over ALL
+   * user messages: that counter desynced after any text-only turn because the array
+   * was only pushed for file-bearing turns.
+   */
+  const pendingFileMap = useRef<Map<number, FileUIPart[]>>(new Map())
+  // Attachment error for inline notice below the composer.
+  const [attachError, setAttachError] = useState<string | null>(null)
+  const [attachmentCount, setAttachmentCount] = useState(0)
   // Latest sessionId from onSessionChange — `agent.session.sessionId` is a stale
   // closure value inside the async submit handler, so we read this ref instead.
   const latestSessionIdRef = useRef<string | undefined>(undefined)
@@ -314,20 +380,48 @@ const EveChatInner: React.FC<EveChatProps & { initialEvents: unknown[]; voiceAva
 
   const handleSubmit = async (message: PromptInputMessage) => {
     const text = message.text?.trim()
-    if (!text) return
+    const hasFiles = message.files.length > 0
+    if (!text && !hasFiles) return
     if (sendingRef.current) return // ignore re-entrant submits while a send is in flight
     sendingRef.current = true
     setInput('')
+    setAttachError(null)
     setStalled(false)
 
     const isNew = !activeId && !agent.session.sessionId
-    // Capture the first user message as the title for a new thread.
+    // Capture the first user message as the title for a new thread (prefer text; fallback for file-only).
     if (isNew && !titleRef.current) {
-      titleRef.current = text.slice(0, 80)
+      titleRef.current = (text ?? '[attachment]').slice(0, 80)
     }
 
     try {
-      await agent.send({ message: text })
+      let userContent: string | Awaited<ReturnType<typeof buildUserContent>>
+      if (hasFiles) {
+        userContent = await buildUserContent(text ?? '', message.files)
+        // Guard: if all files failed to fetch AND text was empty, buildUserContent returns
+        // [{type:'text',text:''}] — an effectively empty turn that wastes gateway credits.
+        // Check for an array whose only element is an empty text part and bail out.
+        if (
+          Array.isArray(userContent) &&
+          userContent.length === 1 &&
+          userContent[0].type === 'text' &&
+          !(userContent[0] as { type: 'text'; text: string }).text
+        ) {
+          sendingRef.current = false
+          return
+        }
+        // Key = number of confirmed (non-optimistic) user messages already in the list.
+        // This equals the zero-based index of the confirmed user message that WILL be
+        // added for this turn. Text-only turns do NOT push to this map, so their slots
+        // return undefined in the render loop (no preview shown — correct).
+        const confirmedUserMsgCount = agent.data.messages.filter(
+          (m) => m.role === 'user' && !m.metadata?.optimistic,
+        ).length
+        pendingFileMap.current.set(confirmedUserMsgCount, message.files)
+      } else {
+        userContent = text as string
+      }
+      await agent.send({ message: userContent })
     } finally {
       sendingRef.current = false
     }
@@ -341,7 +435,7 @@ const EveChatInner: React.FC<EveChatProps & { initialEvents: unknown[]; voiceAva
         setSidebarConversations((prev) =>
           prev.some((c) => c.id === sid)
             ? prev
-            : [{ id: sid, title: titleRef.current ?? text.slice(0, 80) }, ...prev],
+            : [{ id: sid, title: titleRef.current ?? (text ?? '[attachment]').slice(0, 80) }, ...prev],
         )
         router.push(`?conversation=${sid}`)
       }
@@ -392,8 +486,11 @@ const EveChatInner: React.FC<EveChatProps & { initialEvents: unknown[]; voiceAva
                 title="Chat with Eve"
                 description="Ask Eve to create a post or manage your tasks."
               />
-            ) : (
-              agent.data.messages.map((m, index) => {
+            ) : (() => {
+              // Count confirmed (non-optimistic) user messages as we iterate so each one
+              // maps to the same zero-based index used as the key in pendingFileMap.
+              let confirmedUserIdx = 0
+              return agent.data.messages.map((m, index) => {
                 const messageKey = m.id || `message-${index}`
                 return (
                   <Message from={m.role} key={messageKey}>
@@ -431,11 +528,26 @@ const EveChatInner: React.FC<EveChatProps & { initialEvents: unknown[]; voiceAva
                         // step-start: no visible output
                         return null
                       })}
+                      {m.role === 'user' && !m.metadata?.optimistic && (() => {
+                        // Each confirmed user message gets the next index.
+                        // pendingFileMap only has entries for file-bearing turns,
+                        // so text-only turns return undefined → no preview.
+                        const idx = confirmedUserIdx++
+                        const files = pendingFileMap.current.get(idx)
+                        if (!files?.length) return null
+                        return (
+                          <div className="mt-1 flex flex-wrap gap-1">
+                            {files.map((f, fi) => (
+                              <AttachmentPreview key={fi} file={f} />
+                            ))}
+                          </div>
+                        )
+                      })()}
                     </MessageContent>
                   </Message>
                 )
               })
-            )}
+            })()}
             {agent.status === 'submitted' && !stalled && <ThinkingIndicator />}
             {agent.status === 'error' && (
               <ErrorNotice message={agent.error?.message} onRetry={handleRetry} />
@@ -450,42 +562,71 @@ const EveChatInner: React.FC<EveChatProps & { initialEvents: unknown[]; voiceAva
           <ConversationScrollButton />
         </Conversation>
 
-        <PromptInput onSubmit={handleSubmit} className="mt-3">
+        <PromptInput
+          onSubmit={handleSubmit}
+          accept="image/jpeg,image/png,image/gif,image/webp,application/pdf"
+          maxFileSize={4 * 1024 * 1024}
+          maxFiles={5}
+          onError={(err) => setAttachError(err.message)}
+          className="mt-3"
+        >
+          <PreSendAttachmentStrip onCountChange={setAttachmentCount} />
           <PromptInputTextarea
             value={input}
             placeholder="Message Eve…"
             onChange={(e) => setInput(e.currentTarget.value)}
           />
           <PromptInputFooter>
-            {voiceAvailable && (
-              <PromptInputTools>
-                <VoiceButton voice={voice} />
-                {voice.state === 'speaking' ? (
-                  <button
-                    type="button"
-                    onClick={() => voice.stopSpeaking()}
-                    className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-muted-foreground text-xs hover:bg-accent hover:text-accent-foreground"
-                    aria-label="Stop speaking"
-                  >
-                    <SquareIcon className="size-3 fill-current" />
-                    Speaking… tap to stop
-                  </button>
-                ) : voice.listening ? (
-                  <span className="text-muted-foreground text-xs" role="status">
-                    {voice.state === 'thinking' ? 'Thinking…' : 'Listening…'}
-                  </span>
-                ) : null}
-              </PromptInputTools>
-            )}
+            <PromptInputTools>
+              <PromptInputActionMenu>
+                <PromptInputActionMenuTrigger
+                  tooltip="Attach file"
+                  aria-label="Attach file"
+                >
+                  <PaperclipIcon className="size-4" />
+                </PromptInputActionMenuTrigger>
+                <PromptInputActionMenuContent>
+                  <PromptInputActionAddAttachments />
+                </PromptInputActionMenuContent>
+              </PromptInputActionMenu>
+              {voiceAvailable && (
+                <>
+                  <VoiceButton voice={voice} />
+                  {voice.state === 'speaking' ? (
+                    <button
+                      type="button"
+                      onClick={() => voice.stopSpeaking()}
+                      className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-muted-foreground text-xs hover:bg-accent hover:text-accent-foreground"
+                      aria-label="Stop speaking"
+                    >
+                      <SquareIcon className="size-3 fill-current" />
+                      Speaking… tap to stop
+                    </button>
+                  ) : voice.listening ? (
+                    <span className="text-muted-foreground text-xs" role="status">
+                      {voice.state === 'thinking' ? 'Thinking…' : 'Listening…'}
+                    </span>
+                  ) : null}
+                </>
+              )}
+            </PromptInputTools>
             <PromptInputSubmit
               status={agent.status}
               onStop={agent.stop}
               disabled={
-                agent.status !== 'streaming' && agent.status !== 'submitted' && !input.trim()
+                agent.status !== 'streaming' &&
+                agent.status !== 'submitted' &&
+                !input.trim() &&
+                attachmentCount === 0
               }
             />
           </PromptInputFooter>
         </PromptInput>
+        {attachError && (
+          <p className="mt-1 text-destructive text-xs" role="alert">
+            {attachError}
+          </p>
+        )}
       </div>
     </div>
     </TooltipProvider>

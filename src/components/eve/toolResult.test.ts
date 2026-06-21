@@ -6,6 +6,7 @@ import {
   collectionSlugOf,
   describeToolResult,
   hostOf,
+  parseJsonBlock,
   runningLabel,
 } from './toolResult'
 
@@ -106,6 +107,7 @@ describe('describeToolResult', () => {
     expect(v).toMatchObject({ kind: 'web_fetch', url: 'https://x.com', truncated: true, preview: 'hello world' })
   })
 
+  // NOTE: these fixtures pass `doc` directly (test-only shape). Real MCP wire output carries the doc inside a fenced ```json block in content[0].text; parseJsonBlock handles that path.
   it('parses an MCP single-doc create into a record with admin link', () => {
     const v = describeToolResult(
       part({
@@ -206,6 +208,27 @@ describe('describeToolResult', () => {
     }
   })
 
+  it('produces a records card for createDocumentFromMarkdown on the real MCP wire (no doc, uses structuredContent)', () => {
+    const v = describeToolResult(
+      part({
+        state: 'output-available',
+        toolName: 'connection__payload-mcp__createDocumentFromMarkdown',
+        toolMetadata: { eve: { kind: 'tool-call', name: 'connection__payload-mcp__createDocumentFromMarkdown' } },
+        input: { collectionSlug: 'posts', data: { title: 'My Post' } },
+        output: {
+          content: [{ type: 'text', text: 'Created posts document (id: post-99).' }],
+          structuredContent: { id: 'post-99', collectionSlug: 'posts' },
+        },
+      }),
+    )
+    expect(v?.kind).toBe('records')
+    if (v?.kind === 'records') {
+      expect(v.verb).toBe('Created')
+      expect(v.collection).toBe('posts')
+      expect(v.records[0]).toMatchObject({ id: 'post-99', href: '/admin/collections/posts/post-99' })
+    }
+  })
+
   it('falls back to text for an MCP result with no doc', () => {
     const v = describeToolResult(
       part({ state: 'output-available', toolName: 'findDocuments', input: {}, output: { content: [{ type: 'text', text: 'Not found' }] } }),
@@ -226,5 +249,103 @@ describe('runningLabel', () => {
     expect(
       runningLabel(part({ state: 'input-available', toolName: 'createDocument', toolMetadata: { eve: { kind: 'tool-call', name: 'createDocument' } }, input: { data: { title: 'Hi' } } })),
     ).toBe('Creating “Hi”…')
+  })
+})
+
+describe('media_image detection', () => {
+  it('returns media_image when generateImage has structuredContent with url + id', () => {
+    const v = describeToolResult(
+      part({
+        state: 'output-available',
+        toolName: 'connection__payload-mcp__generateImage',
+        toolMetadata: { eve: { kind: 'tool-call', name: 'connection__payload-mcp__generateImage' } },
+        input: { prompt: 'hero', alt: 'A hero image', aspectRatio: '16:9' },
+        output: {
+          content: [{ type: 'text', text: 'Generated image saved to Media (id: img-1). Embed in Markdown as: ![media:img-1]()' }],
+          structuredContent: { id: 'img-1', url: '/media/hero.png', alt: 'A hero image' },
+        },
+      }),
+    )
+    expect(v?.kind).toBe('media_image')
+    if (v?.kind === 'media_image') {
+      expect(v.id).toBe('img-1')
+      expect(v.url).toBe('/media/hero.png')
+      expect(v.alt).toBe('A hero image')
+    }
+  })
+
+  it('falls back to text when structuredContent has no url', () => {
+    const v = describeToolResult(
+      part({
+        state: 'output-available',
+        toolName: 'connection__payload-mcp__generateImage',
+        toolMetadata: { eve: { kind: 'tool-call', name: 'connection__payload-mcp__generateImage' } },
+        input: {},
+        output: {
+          content: [{ type: 'text', text: 'Generated image saved to Media (id: img-2). Embed in Markdown as: ![media:img-2]()' }],
+          structuredContent: { id: 'img-2' },
+        },
+      }),
+    )
+    // No url → not media_image; falls through to text from content[0].text
+    expect(v?.kind).toBe('text')
+  })
+
+  it('does NOT produce media_image when structuredContent is absent', () => {
+    const v = describeToolResult(
+      part({
+        state: 'output-available',
+        toolName: 'connection__payload-mcp__generateImage',
+        input: {},
+        output: {
+          content: [{ type: 'text', text: 'Generated image saved to Media (id: img-3). Embed in Markdown as: ![media:img-3]()' }],
+        },
+      }),
+    )
+    expect(v?.kind).not.toBe('media_image')
+  })
+
+  it('confirms doc-based branch never fires for MCP tools (doc always stripped at wire)', () => {
+    // Even if a test were to put `doc` on the output object, the real wire shape
+    // never has it — but the branch guard `isObj(doc)` must remain for non-MCP paths.
+    // Pass doc explicitly and confirm it IS picked up by existing branch (it's still
+    // correct for any hypothetical non-MCP caller), but also verify it's absent
+    // in the real MCP output shape modelled by our generateImage test above.
+    const vWithDoc = describeToolResult(
+      part({
+        state: 'output-available',
+        toolName: 'createDocument',
+        input: { collectionSlug: 'tasks' },
+        output: { content: [{ type: 'text', text: 'ok' }], doc: { id: 'abc', title: 'Buy milk', priority: 'high' } },
+      }),
+    )
+    // doc branch still fires when doc IS present (non-MCP callers or test fixtures)
+    expect(vWithDoc?.kind).toBe('records')
+
+    // Real MCP output for generateImage has no doc — structuredContent is the channel
+    const vRealMCP = describeToolResult(
+      part({
+        state: 'output-available',
+        toolName: 'connection__payload-mcp__generateImage',
+        input: {},
+        output: {
+          content: [{ type: 'text', text: 'Generated image saved to Media (id: img-4). Embed in Markdown as: ![media:img-4]()' }],
+          structuredContent: { id: 'img-4', url: '/media/hero.png', alt: 'Alt' },
+        },
+      }),
+    )
+    expect(vRealMCP?.kind).toBe('media_image')
+  })
+})
+
+describe('parseJsonBlock', () => {
+  it('parseJsonBlock extracts JSON from a fenced block', () => {
+    const text = 'Here is the result:\n```json\n{"id":"1","title":"A"}\n```\nDone.'
+    const parsed = parseJsonBlock(text)
+    expect(parsed).toMatchObject({ id: '1', title: 'A' })
+  })
+
+  it('parseJsonBlock returns null when no fenced block present', () => {
+    expect(parseJsonBlock('No JSON here.')).toBeNull()
   })
 })

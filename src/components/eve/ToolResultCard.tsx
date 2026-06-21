@@ -7,6 +7,7 @@ import {
   CircleIcon,
   ExternalLinkIcon,
   GlobeIcon,
+  ImageIcon,
   LinkIcon,
   ListChecksIcon,
   LoaderCircleIcon,
@@ -199,6 +200,42 @@ function ResultBody({ view }: { view: ToolResultView }) {
     return <p className="whitespace-pre-wrap text-muted-foreground">{view.text}</p>
   }
 
+  if (view.kind === 'media_image') {
+    const adminUrl = `/admin/collections/media/${view.id}`
+    // Restrict image preview to relative (same-origin) URLs only.
+    // In this template, payload.create always returns a relative path (e.g. /media/hero.png)
+    // because Payload local uploads use a path-only url. We check startsWith('/') — a pure
+    // string check that works in SSR (no window reference). Do NOT use window.location.origin
+    // here: ToolResultCard is rendered server-side during RSC hydration and window is undefined.
+    const isSameOrigin = view.url.startsWith('/')
+    return (
+      <div>
+        <div className="mb-1.5 font-medium">Generated image</div>
+        {isSameOrigin ? (
+          <img
+            src={view.url}
+            alt={view.alt}
+            className="mb-2 max-h-48 w-full rounded object-cover"
+          />
+        ) : (
+          <p className="mb-2 text-muted-foreground text-xs">
+            Image URL is not same-origin; preview suppressed.
+          </p>
+        )}
+        <a
+          href={adminUrl}
+          className="inline-flex items-center gap-1 text-primary text-xs hover:underline"
+        >
+          View in admin
+          <ExternalLinkIcon className="size-3 opacity-60" />
+        </a>
+        {view.alt && (
+          <p className="mt-1 truncate text-muted-foreground text-xs">Alt: {view.alt}</p>
+        )}
+      </div>
+    )
+  }
+
   // Last-resort: a clean done line — we never dump raw JSON into the chat.
   return (
     <span className="text-muted-foreground">{humanizeToolName(view.tool)} completed</span>
@@ -220,6 +257,8 @@ function iconFor(view: ToolResultView): ReactNode {
       return <SearchIcon className="size-4" />
     case 'web_fetch':
       return <GlobeIcon className="size-4" />
+    case 'media_image':
+      return <ImageIcon className="size-4 text-purple-600" />
     case 'discovery':
       return <PlugIcon className="size-4" />
     case 'todos':

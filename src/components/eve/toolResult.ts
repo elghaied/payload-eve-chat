@@ -16,9 +16,9 @@ export type ToolResultView =
   | { kind: 'discovery'; connection?: string; tools: string[]; count: number }
   | { kind: 'todos'; todos: TodoItem[]; total: number; completed: number }
   | { kind: 'text'; text: string }
+  | { kind: 'media_image'; id: string; url: string; alt: string }
   // Last-resort fallback: a clean "✓ <tool>" line — NEVER a raw-JSON dump.
   | { kind: 'done'; tool: string }
-  | { kind: 'media_image'; id: string; url: string; alt: string }
 
 type AnyRecord = Record<string, unknown>
 
@@ -125,10 +125,7 @@ function mcpText(output: AnyRecord): string | undefined {
  * JSON parse fails.
  */
 export function parseJsonBlock(text: string): unknown | null {
-  // Use RegExp constructor to avoid Vite SSR mangling of backtick literals inside regex.
-  const FENCE = '`'.repeat(3)
-  const re = new RegExp(FENCE + 'json\\r?\\n([\\s\\S]*?)\\r?\\n' + FENCE)
-  const m = text.match(re)
+  const m = text.match(/```json\r?\n([\s\S]*?)\r?\n```/)
   if (!m || !m[1]) return null
   try {
     return JSON.parse(m[1])

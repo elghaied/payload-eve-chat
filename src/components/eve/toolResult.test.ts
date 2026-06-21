@@ -107,6 +107,7 @@ describe('describeToolResult', () => {
     expect(v).toMatchObject({ kind: 'web_fetch', url: 'https://x.com', truncated: true, preview: 'hello world' })
   })
 
+  // NOTE: these fixtures pass `doc` directly (test-only shape). Real MCP wire output carries the doc inside a fenced ```json block in content[0].text; parseJsonBlock handles that path.
   it('parses an MCP single-doc create into a record with admin link', () => {
     const v = describeToolResult(
       part({
@@ -314,7 +315,9 @@ describe('media_image detection', () => {
     )
     expect(vRealMCP?.kind).toBe('media_image')
   })
+})
 
+describe('parseJsonBlock', () => {
   it('parseJsonBlock extracts JSON from a fenced block', () => {
     const text = 'Here is the result:\n```json\n{"id":"1","title":"A"}\n```\nDone.'
     const parsed = parseJsonBlock(text)

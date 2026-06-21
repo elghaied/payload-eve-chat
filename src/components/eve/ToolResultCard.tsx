@@ -237,6 +237,7 @@ function iconFor(view: ToolResultView): ReactNode {
       ) : (
         <CheckCircle2Icon className="size-4 text-green-600" />
       )
+    // TODO Task 2: add an image icon case for media_image
     default:
       return <LinkIcon className="size-4" />
   }

@@ -57,9 +57,17 @@ export const ConversationHistoryPanel: React.FC<{
   const searchParams = useSearchParams()
   const [conversations, setConversations] = useState<ConversationSummary[]>(initialConversations)
 
-  // Server revalidation (tab re-activation) hands us a fresh list — adopt it.
+  // Server revalidation (tab re-activation) hands us a fresh list. Adopt it, but keep any
+  // locally-known rows the server list doesn't have yet: a brand-new conversation added via
+  // the event may not be persisted by the time the server re-renders, and we must not wipe it
+  // (the optimistic row, newest, stays on top). Safe because there is no conversation-delete
+  // feature — a local extra is never a stale ghost that should disappear.
   useEffect(() => {
-    setConversations(initialConversations)
+    setConversations((prev) => {
+      const serverIds = new Set(initialConversations.map((c) => c.id))
+      const localExtras = prev.filter((c) => !serverIds.has(c.id))
+      return [...localExtras, ...initialConversations]
+    })
   }, [initialConversations])
 
   // Live updates from the chat view (separate React tree).

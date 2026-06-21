@@ -86,11 +86,27 @@ describe('ConversationHistoryPanel', () => {
     expect(screen.getByText('Zed 2')).toBeTruthy()
   })
 
-  it('re-syncs the list when initialConversations changes (server revalidation)', () => {
+  it('adopts new rows from a revalidated server list while keeping existing ones', () => {
     const { rerender } = render(<ConversationHistoryPanel initialConversations={LIST} />)
-    rerender(<ConversationHistoryPanel initialConversations={[{ id: 'c', title: 'Gamma' }]} />)
+    rerender(
+      <ConversationHistoryPanel initialConversations={[{ id: 'c', title: 'Gamma' }, ...LIST]} />,
+    )
     expect(screen.getByText('Gamma')).toBeTruthy()
-    expect(screen.queryByText('Alpha')).toBeNull()
+    expect(screen.getByText('Alpha')).toBeTruthy()
+  })
+
+  it('keeps an event-merged row that a later revalidation does not yet include', () => {
+    // The new chat is added optimistically via the event before /api/eve/session-index has
+    // persisted it; a tab revalidation that returns the still-stale server list must NOT wipe it.
+    const { rerender } = render(<ConversationHistoryPanel initialConversations={LIST} />)
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent(CONVERSATION_CREATED_EVENT, { detail: { id: 'z', title: 'Zed' } }),
+      )
+    })
+    expect(screen.getByText('Zed')).toBeTruthy()
+    rerender(<ConversationHistoryPanel initialConversations={LIST} />)
+    expect(screen.getByText('Zed')).toBeTruthy()
   })
 
   it('dispatchConversationCreated emits the event with the given detail', () => {

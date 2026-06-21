@@ -15,10 +15,28 @@ import { type AuthFn } from 'eve/channels/auth'
  * Payload runs) — a non-null `user` there is by definition a users-collection user,
  * reproducing the old admin-only gate without instantiating Payload in the Eve runtime.
  */
+/**
+ * Where the Eve runtime should reach the Payload app's `/api/users/me`.
+ *
+ * Local dev: `http://localhost:3000`. On Vercel the Eve runtime is a SEPARATE service, so
+ * `localhost` points at nothing and the admin-session check would always fail with
+ * "Authorization is required for this route." Fall back to the deployment's own public URL —
+ * `VERCEL_PROJECT_PRODUCTION_URL` (stable production domain) or `VERCEL_URL` (per-deployment,
+ * for previews). The forwarded session cookie is validated by token regardless of which host we
+ * hit, so any reachable instance of this project works. Override with `PAYLOAD_INTERNAL_URL` for
+ * a custom internal hostname.
+ */
+export function resolveAdminBaseUrl(): string {
+  if (process.env.PAYLOAD_INTERNAL_URL) return process.env.PAYLOAD_INTERNAL_URL
+  const vercelHost = process.env.VERCEL_PROJECT_PRODUCTION_URL || process.env.VERCEL_URL
+  if (vercelHost) return `https://${vercelHost}`
+  return 'http://localhost:3000'
+}
+
 export async function authorizeAdminRequest(
   request: Request,
   fetchImpl: typeof fetch = fetch,
-  baseUrl: string = process.env.PAYLOAD_INTERNAL_URL || 'http://localhost:3000',
+  baseUrl: string = resolveAdminBaseUrl(),
 ): Promise<{ id: string } | null> {
   try {
     const cookie = request.headers.get('cookie')

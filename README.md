@@ -339,6 +339,12 @@ The app is Vercel-native; `withEve` deploys the Eve runtime as a private service
      photos, optional)
    - AI Gateway auth is provided by Vercel OIDC automatically in production (or set
      `AI_GATEWAY_API_KEY`).
+   - `PAYLOAD_INTERNAL_URL` — **not required.** The Eve runtime validates the admin session by
+     calling the app's `/api/users/me`, and auto-detects the deployment URL on Vercel
+     (`VERCEL_PROJECT_PRODUCTION_URL` / `VERCEL_URL`). Only set this if the auto-detected URL
+     isn't reachable from the Eve service (e.g. a custom internal hostname, or **Vercel
+     Deployment Protection** is on — exempt the production domain or set this to a reachable
+     URL). If a chat turn returns *"Authorization is required for this route,"* this is why.
 5. **Deploy** — `vercel deploy` (or push to a connected Git branch). `withEve` runs `eve build`
    and serves the agent at the private `/_eve_internal/eve` service; `/eve/v1/*` is rewritten to it
    same-origin.

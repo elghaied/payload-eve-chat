@@ -187,6 +187,7 @@ export interface Media {
   alt: string;
   credit?: string | null;
   creditUrl?: string | null;
+  prefix?: string | null;
   updatedAt: string;
   createdAt: string;
   url?: string | null;
@@ -384,6 +385,7 @@ export interface MediaSelect<T extends boolean = true> {
   alt?: T;
   credit?: T;
   creditUrl?: T;
+  prefix?: T;
   updatedAt?: T;
   createdAt?: T;
   url?: T;

@@ -1,6 +1,7 @@
 import { mongooseAdapter } from '@payloadcms/db-mongodb'
 import { lexicalEditor } from '@payloadcms/richtext-lexical'
 import { mcpPlugin } from '@payloadcms/plugin-mcp'
+import { vercelBlobStorage } from '@payloadcms/storage-vercel-blob'
 import path from 'path'
 import { buildConfig } from 'payload'
 import { fileURLToPath } from 'url'
@@ -45,9 +46,34 @@ export default buildConfig({
     outputFile: path.resolve(dirname, 'payload-types.ts'),
   },
   db: mongooseAdapter({
-    url: process.env.DATABASE_URL || '',
+    // Local dev: DATABASE_URL (a local mongod). On Vercel, the MongoDB Atlas marketplace
+    // integration injects the connection string under a name you pick when connecting the
+    // resource — commonly MONGODB_URI (or a prefixed variant). Accept the common names so the
+    // deploy works whether or not the integration used DATABASE_URL. Verify the exact name in
+    // Vercel → Project → Settings → Environment Variables; if it's something else, either add a
+    // DATABASE_URL there or tell us the name to add to this list.
+    url:
+      process.env.DATABASE_URL ||
+      process.env.MONGODB_URI ||
+      process.env.MONGODB_URL ||
+      process.env.MONGO_URL ||
+      '',
   }),
   sharp,
+  // Media storage adapters (Payload v4 takes these in a top-level `storage` array, NOT in
+  // `plugins`). The token is auto-injected by Vercel when a Blob store is linked to the project
+  // (BLOB_READ_WRITE_TOKEN). When the token is unset (local dev), the adapter disables itself and
+  // Payload falls back to local disk (the gitignored /media directory). We register it
+  // unconditionally with alwaysInsertFields so the Media schema stays identical across dev and
+  // prod whether or not Blob is active.
+  storage: [
+    vercelBlobStorage({
+      enabled: Boolean(process.env.BLOB_READ_WRITE_TOKEN),
+      collections: { media: true },
+      token: process.env.BLOB_READ_WRITE_TOKEN,
+      alwaysInsertFields: true,
+    }),
+  ],
   plugins: [
     // v4 plugin-mcp uses an OPT-OUT model: every collection is exposed through the
     // built-in CRUD tools (find/create/update/delete/getCollectionSchema) by default.

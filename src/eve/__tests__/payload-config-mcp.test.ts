@@ -76,6 +76,24 @@ describe('payload.config.ts sidebar tab registration', () => {
   })
 })
 
+describe('payload.config.ts media storage + database url', () => {
+  it('registers the Vercel Blob adapter in the top-level storage array (not plugins)', () => {
+    expect(configSource).toContain("from '@payloadcms/storage-vercel-blob'")
+    expect(configSource).toContain('storage: [')
+    expect(configSource).toContain('vercelBlobStorage(')
+    expect(configSource).toContain('token: process.env.BLOB_READ_WRITE_TOKEN')
+  })
+
+  it('keeps the Media schema consistent across environments (alwaysInsertFields)', () => {
+    expect(configSource).toContain('alwaysInsertFields: true')
+  })
+
+  it('falls back across common MongoDB env var names for the Vercel Atlas integration', () => {
+    expect(configSource).toContain('process.env.DATABASE_URL')
+    expect(configSource).toContain('process.env.MONGODB_URI')
+  })
+})
+
 const mediaSource = readFileSync(resolve(process.cwd(), 'src/collections/Media.ts'), 'utf-8')
 
 describe('Media collection credit fields', () => {

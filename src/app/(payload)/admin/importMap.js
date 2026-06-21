@@ -25,6 +25,7 @@ import { APIKeyField as APIKeyField_210e1789eef737e0b4d9f054258f19bb } from '@pa
 import { AccessField as AccessField_210e1789eef737e0b4d9f054258f19bb } from '@payloadcms/plugin-mcp/client'
 import { APIKeysEmptyState as APIKeysEmptyState_210e1789eef737e0b4d9f054258f19bb } from '@payloadcms/plugin-mcp/client'
 import { MCPSettingsMenu as MCPSettingsMenu_210e1789eef737e0b4d9f054258f19bb } from '@payloadcms/plugin-mcp/client'
+import { VercelBlobClientUploadHandler as VercelBlobClientUploadHandler_16c82c5e25f430251a3e3ba57219ff4e } from '@payloadcms/storage-vercel-blob/client'
 import { EveChatTabIcon as EveChatTabIcon_e7722af43083d192d7c294d5f5457ffe } from '../../../components/eve/EveChatTabIcon'
 import { EveChatTab as EveChatTab_09db0fdc59542043b94afe2dfb61dc2f } from '../../../components/eve/EveChatTab'
 import { EveView as EveView_3aa04f982e779067b4fb817502ff73f1 } from '../../../components/eve/EveView'
@@ -59,6 +60,7 @@ export const importMap = {
   "@payloadcms/plugin-mcp/client#AccessField": AccessField_210e1789eef737e0b4d9f054258f19bb,
   "@payloadcms/plugin-mcp/client#APIKeysEmptyState": APIKeysEmptyState_210e1789eef737e0b4d9f054258f19bb,
   "@payloadcms/plugin-mcp/client#MCPSettingsMenu": MCPSettingsMenu_210e1789eef737e0b4d9f054258f19bb,
+  "@payloadcms/storage-vercel-blob/client#VercelBlobClientUploadHandler": VercelBlobClientUploadHandler_16c82c5e25f430251a3e3ba57219ff4e,
   "/components/eve/EveChatTabIcon#EveChatTabIcon": EveChatTabIcon_e7722af43083d192d7c294d5f5457ffe,
   "/components/eve/EveChatTab#EveChatTab": EveChatTab_09db0fdc59542043b94afe2dfb61dc2f,
   "/components/eve/EveView#EveView": EveView_3aa04f982e779067b4fb817502ff73f1,

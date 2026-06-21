@@ -28,7 +28,6 @@ import {
   describeToolResult,
   hostOf,
   runningLabel,
-  type PhotoCandidate,
   type TodoStatus,
   type ToolResultView,
 } from './toolResult'
@@ -44,7 +43,16 @@ function Shell({ icon, children }: { icon: ReactNode; children: ReactNode }) {
   )
 }
 
-function ResultBody({ view }: { view: ToolResultView }) {
+function ResultBody({
+  view,
+  onSelectPhoto,
+  busy,
+}: {
+  view: ToolResultView
+  /** Click-to-select for the photo_search grid: picks an Unsplash photo by id. */
+  onSelectPhoto?: (photoId: string, description: string) => void
+  busy?: boolean
+}) {
   if (view.kind === 'web_search') {
     if (!view.answer && view.results.length === 0)
       return <span className="text-muted-foreground">No web results.</span>
@@ -274,15 +282,29 @@ function ResultBody({ view }: { view: ToolResultView }) {
         <div className="mb-2 font-medium">
           Unsplash photos for "{view.query}"
         </div>
+        {onSelectPhoto && (
+          <p className="mb-2 text-muted-foreground text-xs">Click a photo to use it.</p>
+        )}
         <div className="grid grid-cols-3 gap-2">
-          {view.photos.map((p: PhotoCandidate) => (
+          {view.photos.map((p) => (
             <div key={p.photoId} className="overflow-hidden rounded border">
-              <img
-                src={p.thumbUrl}
-                alt={p.description}
-                className="h-20 w-full object-cover"
-                referrerPolicy="no-referrer"
-              />
+              {/* Clicking the thumbnail asks Eve to add THIS photo to Media. The photographer
+                  link below is a separate <a> (not nested), so it never triggers selection. */}
+              <button
+                type="button"
+                disabled={!onSelectPhoto || busy}
+                onClick={() => onSelectPhoto?.(p.photoId, p.description)}
+                title={onSelectPhoto ? 'Use this photo' : undefined}
+                className="block w-full cursor-pointer transition hover:opacity-90 hover:ring-2 hover:ring-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-default disabled:hover:ring-0"
+                aria-label={`Use photo: ${p.description}`}
+              >
+                <img
+                  src={p.thumbUrl}
+                  alt={p.description}
+                  className="h-20 w-full object-cover"
+                  referrerPolicy="no-referrer"
+                />
+              </button>
               <div className="p-1">
                 <p className="line-clamp-1 text-xs font-medium">{p.description}</p>
                 <a
@@ -351,7 +373,16 @@ function iconFor(view: ToolResultView): ReactNode {
  * fetched-URL preview, "Created task → admin link", etc.) instead of raw JSON. Handles the
  * running / error / denied states too. HITL (approval-requested) is handled upstream.
  */
-export function ToolResultCard({ part }: { part: EveDynamicToolPart }) {
+export function ToolResultCard({
+  part,
+  onSelectPhoto,
+  busy,
+}: {
+  part: EveDynamicToolPart
+  /** Click-to-select handler for Unsplash photo_search results. */
+  onSelectPhoto?: (photoId: string, description: string) => void
+  busy?: boolean
+}) {
   const label = humanizeToolName(bareToolName(part.toolMetadata?.eve?.name ?? part.toolName))
 
   if (part.state === 'input-streaming' || part.state === 'input-available') {
@@ -385,5 +416,9 @@ export function ToolResultCard({ part }: { part: EveDynamicToolPart }) {
 
   const view = describeToolResult(part)
   if (!view) return null
-  return <Shell icon={iconFor(view)}>{<ResultBody view={view} />}</Shell>
+  return (
+    <Shell icon={iconFor(view)}>
+      <ResultBody view={view} onSelectPhoto={onSelectPhoto} busy={busy} />
+    </Shell>
+  )
 }

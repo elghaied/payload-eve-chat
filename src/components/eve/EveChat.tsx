@@ -167,6 +167,7 @@ function renderToolPart(
   key: string,
   opts: {
     onRespondInput?: (response: InputResponseValue) => void
+    onSelectPhoto?: (photoId: string, description: string) => void
     busy?: boolean
   } = {},
 ): React.ReactNode {
@@ -188,7 +189,14 @@ function renderToolPart(
 
   // Purpose-built result UI (clickable search links, fetched-URL preview, "Created task →
   // admin link", etc.) for every other tool state — never a raw-JSON dump.
-  return <ToolResultCard key={key} part={part} />
+  return (
+    <ToolResultCard
+      key={key}
+      part={part}
+      onSelectPhoto={opts.onSelectPhoto}
+      busy={opts.busy}
+    />
+  )
 }
 
 // ── Loader: replay history (when reopening a thread) before mounting the hook ───
@@ -464,6 +472,23 @@ const EveChatInner: React.FC<EveChatProps & { initialEvents: unknown[]; voiceAva
     },
     [agent],
   )
+
+  // Click-to-select on an Unsplash photo_search card: tell Eve to use that exact photo.
+  // We send a message naming the photoId so she calls addPhotoToMedia deterministically
+  // (no need for the user to copy ids or describe which one).
+  const handleSelectPhoto = useCallback(
+    (photoId: string, description: string) => {
+      if (agent.status === 'submitted' || agent.status === 'streaming') return
+      setStalled(false)
+      void agent.send({
+        message:
+          `Use this Unsplash photo (photoId: "${photoId}"${description ? ` — ${description}` : ''}). ` +
+          `Call addPhotoToMedia with that exact photoId and a fitting alt, then use the returned media id ` +
+          `as ![media:<id>]() with the photographer credit.`,
+      })
+    },
+    [agent],
+  )
   const agentBusy = agent.status === 'submitted' || agent.status === 'streaming'
 
   // Retry after a failed/stalled turn by re-sending the most recent user message.
@@ -536,6 +561,7 @@ const EveChatInner: React.FC<EveChatProps & { initialEvents: unknown[]; voiceAva
                         if (part.type === 'dynamic-tool') {
                           return renderToolPart(part, partKey, {
                             onRespondInput: handleRespondInput,
+                            onSelectPhoto: handleSelectPhoto,
                             busy: agentBusy,
                           })
                         }

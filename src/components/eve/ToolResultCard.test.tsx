@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, render, screen } from '@testing-library/react'
 import type { EveDynamicToolPart } from 'eve/react'
 import { ToolResultCard } from './ToolResultCard'
@@ -203,6 +203,58 @@ describe('ToolResultCard — photo_search', () => {
   it('shows "Searching Unsplash…" while running', () => {
     render(<ToolResultCard part={part({ state: 'input-available', toolName: 'searchPhotos', input: { query: 'cats' } })} />)
     expect(screen.getByText('Searching Unsplash…')).toBeTruthy()
+  })
+
+  it('calls onSelectPhoto with the photoId when a thumbnail is clicked', () => {
+    const onSelectPhoto = vi.fn()
+    render(
+      <ToolResultCard
+        onSelectPhoto={onSelectPhoto}
+        part={part({
+          state: 'output-available',
+          toolName: 'searchPhotos',
+          input: { query: 'cats', perPage: 6 },
+          output: {
+            content: [{ type: 'text', text: 'Found 2 photos.' }],
+            structuredContent: {
+              photos: [
+                { photoId: 'abc', description: 'fluffy cat', thumbUrl: 'https://images.unsplash.com/thumb1', photographer: 'Jane Doe', photographerUrl: 'https://unsplash.com/@jane', unsplashUrl: 'https://unsplash.com/photos/abc' },
+                { photoId: 'def', description: 'orange tabby', thumbUrl: 'https://images.unsplash.com/thumb2', photographer: 'Bob Smith', photographerUrl: 'https://unsplash.com/@bob', unsplashUrl: 'https://unsplash.com/photos/def' },
+              ],
+            },
+          },
+        })}
+      />,
+    )
+    // The "Click a photo to use it" hint appears when selection is enabled.
+    expect(screen.getByText(/Click a photo to use it/i)).toBeTruthy()
+    // Each thumbnail is a button labelled by its description; clicking it selects that photo.
+    screen.getByRole('button', { name: /Use photo: orange tabby/i }).click()
+    expect(onSelectPhoto).toHaveBeenCalledWith('def', 'orange tabby')
+  })
+
+  it('does not render selection buttons (or the hint) when onSelectPhoto is absent', () => {
+    render(
+      <ToolResultCard
+        part={part({
+          state: 'output-available',
+          toolName: 'searchPhotos',
+          input: { query: 'cats' },
+          output: {
+            content: [{ type: 'text', text: 'Found 1.' }],
+            structuredContent: {
+              photos: [
+                { photoId: 'abc', description: 'fluffy cat', thumbUrl: 'https://images.unsplash.com/thumb1', photographer: 'Jane Doe', photographerUrl: 'https://unsplash.com/@jane', unsplashUrl: 'https://unsplash.com/photos/abc' },
+              ],
+            },
+          },
+        })}
+      />,
+    )
+    expect(screen.queryByText(/Click a photo to use it/i)).toBeNull()
+    // The disabled button still renders but is not actionable; the hint is the user-facing signal.
+    const btn = screen.getByRole('button', { name: /Use photo: fluffy cat/i }) as HTMLButtonElement
+    expect(btn.disabled).toBe(true)
   })
 })
 

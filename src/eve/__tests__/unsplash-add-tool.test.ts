@@ -55,7 +55,10 @@ describe('addPhotoToMediaHandler', () => {
     const result = await addPhotoToMediaHandler(makeArgs({}, req))
     expect(mockGetPhoto).toHaveBeenCalledWith('abc123')
     expect(mockTriggerDownload).toHaveBeenCalledWith('https://api.unsplash.com/photos/abc123/download')
-    expect(mockImageFetch).toHaveBeenCalledWith('https://images.unsplash.com/photo-regular')
+    expect(mockImageFetch).toHaveBeenCalledWith(
+      'https://images.unsplash.com/photo-regular',
+      expect.objectContaining({ redirect: 'manual' }),
+    )
     expect(req.payload.create).toHaveBeenCalledWith(expect.objectContaining({
       collection: 'media',
       data: expect.objectContaining({ alt: 'mountain lake', credit: 'Jane Doe' }),
@@ -101,6 +104,23 @@ describe('addPhotoToMediaHandler', () => {
     const result = await addPhotoToMediaHandler(makeArgs({}, req))
     expect(result.isError).toBe(true)
     expect(result.content[0].text).toContain('HTTP 403')
+    expect(req.payload.create).not.toHaveBeenCalled()
+    vi.unstubAllGlobals()
+  })
+
+  it('refuses redirects (SSRF redirect bypass): fetch 302 returns isError and does not call payload.create', async () => {
+    vi.mocked(mockGetPhoto).mockResolvedValueOnce(PHOTO)
+    vi.mocked(mockAssertUnsplashUrl).mockReturnValue(undefined as never)
+    vi.mocked(mockTriggerDownload).mockResolvedValueOnce(undefined)
+    const mockImageFetch = vi.fn().mockResolvedValue({ ok: false, status: 302 })
+    vi.stubGlobal('fetch', mockImageFetch)
+    const req = makeReq()
+    const result = await addPhotoToMediaHandler(makeArgs({}, req))
+    expect(result.isError).toBe(true)
+    expect(mockImageFetch).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ redirect: 'manual' }),
+    )
     expect(req.payload.create).not.toHaveBeenCalled()
     vi.unstubAllGlobals()
   })

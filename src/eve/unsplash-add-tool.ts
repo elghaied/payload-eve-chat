@@ -56,7 +56,7 @@ export async function addPhotoToMediaHandler({
   // 4. Fetch the image bytes.
   let imageRes: Response
   try {
-    imageRes = await fetch(imageUrl)
+    imageRes = await fetch(imageUrl, { redirect: 'manual' })
   } catch (err) {
     return { content: [{ type: 'text' as const, text: `Failed to fetch image: ${err instanceof Error ? err.message : String(err)}` }], structuredContent: {} as never, isError: true as const }
   }

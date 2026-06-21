@@ -3,7 +3,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from '@payloadcms/ui'
 import { useEveAgent } from 'eve/react'
 import type { EveDynamicToolPart } from 'eve/react'
-import { SquareIcon } from 'lucide-react'
+import { PaperclipIcon, SquareIcon } from 'lucide-react'
 import {
   Conversation,
   ConversationContent,
@@ -28,7 +28,6 @@ import {
 import type { FileUIPart } from 'ai'
 import { buildUserContent } from './fileParts'
 import { AttachmentPreview } from './AttachmentPreview'
-import { PaperclipIcon } from 'lucide-react'
 import { ToolResultCard } from './ToolResultCard'
 import { Reasoning } from '@/components/ai-elements/reasoning'
 import { TooltipProvider } from '@/components/ui/tooltip'

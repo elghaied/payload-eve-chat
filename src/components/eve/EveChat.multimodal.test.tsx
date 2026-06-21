@@ -49,10 +49,25 @@ async function simulateHandleSubmit(
   if (opts.sendingRef.current) return
   opts.sendingRef.current = true
   try {
-    const userContent = hasFiles
-      ? await buildUserContent(text ?? '', message.files)
-      : (text as string)
-    if (hasFiles) opts.pendingFileQueue.current.push(message.files)
+    let userContent: string | Awaited<ReturnType<typeof buildUserContent>>
+    if (hasFiles) {
+      userContent = await buildUserContent(text ?? '', message.files)
+      // Guard: if all files failed to fetch AND text was empty, buildUserContent returns
+      // [{type:'text',text:''}] — an effectively empty turn that wastes gateway credits.
+      // Check for an array whose only element is an empty text part and bail out.
+      if (
+        Array.isArray(userContent) &&
+        userContent.length === 1 &&
+        userContent[0].type === 'text' &&
+        !(userContent[0] as { type: 'text'; text: string }).text
+      ) {
+        opts.sendingRef.current = false
+        return
+      }
+      opts.pendingFileQueue.current.push(message.files)
+    } else {
+      userContent = text as string
+    }
     await opts.agentSend({ message: userContent })
   } finally {
     opts.sendingRef.current = false
@@ -143,5 +158,27 @@ describe('EveChat handleSubmit multimodal logic', () => {
     const parts = arg.message as Array<{ type: string }>
     expect(parts[0]).toMatchObject({ type: 'text', text: 'what is this?' })
     expect(parts[1]).toMatchObject({ type: 'file', mediaType: 'image/jpeg' })
+  })
+
+  it('does NOT call agentSend when buildUserContent returns only an empty text part (empty-turn guard)', async () => {
+    // Arrange: make fetch throw so all file conversions fail. With empty text,
+    // buildUserContent will return [{type:'text',text:''}] — the degenerate case the
+    // empty-turn guard must catch.
+    vi.stubGlobal('fetch', async () => { throw new Error('network error') })
+
+    const file = makeFileUIPart()
+    await simulateHandleSubmit(
+      { text: '', files: [file] },
+      { sendingRef, pendingFileQueue, agentSend },
+    )
+
+    expect(agentSend).not.toHaveBeenCalled()
+    expect(pendingFileQueue.current).toHaveLength(0)
+
+    // Restore the successful fetch stub for subsequent tests
+    vi.stubGlobal('fetch', async (_url: string) => ({
+      ok: true,
+      arrayBuffer: async () => new Uint8Array([1, 2, 3]).buffer,
+    } as Response))
   })
 })

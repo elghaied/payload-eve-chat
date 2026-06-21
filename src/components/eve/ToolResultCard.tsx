@@ -199,6 +199,11 @@ function ResultBody({ view }: { view: ToolResultView }) {
     return <p className="whitespace-pre-wrap text-muted-foreground">{view.text}</p>
   }
 
+  // media_image — rendered in Task 2; placeholder until then.
+  if (view.kind === 'media_image') {
+    return <span className="text-muted-foreground">Image generated (id: {view.id})</span>
+  }
+
   // Last-resort: a clean done line — we never dump raw JSON into the chat.
   return (
     <span className="text-muted-foreground">{humanizeToolName(view.tool)} completed</span>

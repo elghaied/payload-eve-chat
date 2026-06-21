@@ -226,12 +226,17 @@ export function describeToolResult(part: EveDynamicToolPart): ToolResultView | n
     if (text) return { kind: 'text', text }
   }
 
-  // MCP tools — { content:[{text}], doc?, isError? }
+  // MCP tools — { content:[{text}], doc?, structuredContent?, isError? }
   if (isObj(output)) {
     const text = mcpText(output)
-    // Try doc first (present in test fixtures; absent in real MCP wire output because
-    // finalizeToolResponse strips it). Then fall back to fenced ```json block in content text.
-    const docRaw: unknown = output['doc'] ?? (text ? parseJsonBlock(text) : null)
+    // Priority: doc (test fixtures / non-MCP callers) → structuredContent (real MCP wire, e.g.
+    // createDocumentFromMarkdown which strips doc but emits structuredContent) → fenced ```json
+    // block in content text (built-in plugin-mcp create/find tools).
+    const sc = output['structuredContent']
+    const docRaw: unknown =
+      output['doc'] ??
+      (isObj(sc) && 'id' in sc ? sc : null) ??
+      (text ? parseJsonBlock(text) : null)
     if (isObj(docRaw)) {
       // List result (PaginatedDocs) → Found N
       const docs = docRaw['docs']
@@ -245,8 +250,10 @@ export function describeToolResult(part: EveDynamicToolPart): ToolResultView | n
           records: docs.filter(isObj).slice(0, 10).map((d) => toRecord(d, slug)),
         }
       }
-      // Single document
-      const slug = collectionSlugOf(part.input, docRaw)
+      // Single document — prefer collectionSlug from structuredContent when present.
+      const slug =
+        (isObj(sc) && typeof sc['collectionSlug'] === 'string' ? (sc['collectionSlug'] as string) : undefined) ??
+        collectionSlugOf(part.input, docRaw)
       return { kind: 'records', verb: verbFor(name), collection: slug, records: [toRecord(docRaw, slug)] }
     }
     if (text) return { kind: 'text', text }

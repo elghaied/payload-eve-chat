@@ -208,6 +208,27 @@ describe('describeToolResult', () => {
     }
   })
 
+  it('produces a records card for createDocumentFromMarkdown on the real MCP wire (no doc, uses structuredContent)', () => {
+    const v = describeToolResult(
+      part({
+        state: 'output-available',
+        toolName: 'connection__payload-mcp__createDocumentFromMarkdown',
+        toolMetadata: { eve: { kind: 'tool-call', name: 'connection__payload-mcp__createDocumentFromMarkdown' } },
+        input: { collectionSlug: 'posts', data: { title: 'My Post' } },
+        output: {
+          content: [{ type: 'text', text: 'Created posts document (id: post-99).' }],
+          structuredContent: { id: 'post-99', collectionSlug: 'posts' },
+        },
+      }),
+    )
+    expect(v?.kind).toBe('records')
+    if (v?.kind === 'records') {
+      expect(v.verb).toBe('Created')
+      expect(v.collection).toBe('posts')
+      expect(v.records[0]).toMatchObject({ id: 'post-99', href: '/admin/collections/posts/post-99' })
+    }
+  })
+
   it('falls back to text for an MCP result with no doc', () => {
     const v = describeToolResult(
       part({ state: 'output-available', toolName: 'findDocuments', input: {}, output: { content: [{ type: 'text', text: 'Not found' }] } }),

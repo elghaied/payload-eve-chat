@@ -149,3 +149,99 @@ describe('ToolResultCard', () => {
     expect(screen.getByText('Generating image…')).toBeTruthy()
   })
 })
+
+describe('ToolResultCard — photo_search', () => {
+  it('renders a thumbnail grid with photographer attribution links', () => {
+    render(
+      <ToolResultCard
+        part={part({
+          state: 'output-available',
+          toolName: 'searchPhotos',
+          input: { query: 'cats', perPage: 6 },
+          output: {
+            content: [{ type: 'text', text: 'Found 2 photos.' }],
+            structuredContent: {
+              photos: [
+                { photoId: 'abc', description: 'fluffy cat', thumbUrl: 'https://images.unsplash.com/thumb1', photographer: 'Jane Doe', photographerUrl: 'https://unsplash.com/@jane?utm_source=payload-eve-chat&utm_medium=referral', unsplashUrl: 'https://unsplash.com/photos/abc' },
+                { photoId: 'def', description: 'orange tabby', thumbUrl: 'https://images.unsplash.com/thumb2', photographer: 'Bob Smith', photographerUrl: 'https://unsplash.com/@bob?utm_source=payload-eve-chat&utm_medium=referral', unsplashUrl: 'https://unsplash.com/photos/def' },
+              ],
+            },
+          },
+        })}
+      />,
+    )
+    // Thumbnails rendered as images
+    const imgs = document.querySelectorAll('img')
+    const thumbSrcs = Array.from(imgs).map((img) => img.getAttribute('src'))
+    expect(thumbSrcs).toContain('https://images.unsplash.com/thumb1')
+    expect(thumbSrcs).toContain('https://images.unsplash.com/thumb2')
+    // Photographer attribution links
+    const janeLink = screen.getByRole('link', { name: /Jane Doe/ }) as HTMLAnchorElement
+    expect(janeLink.href).toContain('utm_source=payload-eve-chat')
+    expect(janeLink.getAttribute('target')).toBe('_blank')
+    // No raw JSON
+    expect(document.body.textContent).not.toContain('photoId')
+  })
+
+  it('shows "No photos found" when results are empty', () => {
+    render(
+      <ToolResultCard
+        part={part({
+          state: 'output-available',
+          toolName: 'searchPhotos',
+          input: { query: 'nothing', perPage: 6 },
+          output: {
+            content: [{ type: 'text', text: 'Found 0.' }],
+            structuredContent: { photos: [] },
+          },
+        })}
+      />,
+    )
+    expect(screen.getByText(/No photos found/i)).toBeTruthy()
+  })
+
+  it('shows "Searching Unsplash…" while running', () => {
+    render(<ToolResultCard part={part({ state: 'input-available', toolName: 'searchPhotos', input: { query: 'cats' } })} />)
+    expect(screen.getByText('Searching Unsplash…')).toBeTruthy()
+  })
+})
+
+describe('ToolResultCard — media_image with credit', () => {
+  it('renders the credit line when credit is present', () => {
+    render(
+      <ToolResultCard
+        part={part({
+          state: 'output-available',
+          toolName: 'addPhotoToMedia',
+          input: { photoId: 'abc', alt: 'mountain lake' },
+          output: {
+            content: [{ type: 'text', text: 'Saved.' }],
+            structuredContent: { id: 'media-1', url: '/media/unsplash-abc.jpg', alt: 'mountain lake', credit: 'Jane Doe', creditUrl: 'https://unsplash.com/@jane?utm_source=payload-eve-chat&utm_medium=referral' },
+          },
+        })}
+      />,
+    )
+    const creditLink = screen.getByRole('link', { name: /Jane Doe/ }) as HTMLAnchorElement
+    expect(creditLink.href).toContain('utm_source=payload-eve-chat')
+    expect(creditLink.getAttribute('target')).toBe('_blank')
+    expect(screen.getByText(/Unsplash/)).toBeTruthy()
+  })
+
+  it('renders media_image WITHOUT credit when generateImage (backward-compat)', () => {
+    render(
+      <ToolResultCard
+        part={part({
+          state: 'output-available',
+          toolName: 'generateImage',
+          input: { prompt: 'hero', alt: 'hero image' },
+          output: {
+            content: [{ type: 'text', text: 'done' }],
+            structuredContent: { id: 'img-1', url: '/media/hero.png', alt: 'hero image' },
+          },
+        })}
+      />,
+    )
+    // Should not have an Unsplash credit line
+    expect(document.body.textContent).not.toContain('Unsplash')
+  })
+})

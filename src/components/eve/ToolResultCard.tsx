@@ -28,6 +28,7 @@ import {
   describeToolResult,
   hostOf,
   runningLabel,
+  type PhotoCandidate,
   type TodoStatus,
   type ToolResultView,
 } from './toolResult'
@@ -219,7 +220,7 @@ function ResultBody({ view }: { view: ToolResultView }) {
     const isSameOrigin = view.url.startsWith('/')
     return (
       <div>
-        <div className="mb-1.5 font-medium">Generated image</div>
+        <div className="mb-1.5 font-medium">{view.credit ? 'Saved photo' : 'Generated image'}</div>
         {isSameOrigin ? (
           <img
             src={view.url}
@@ -238,6 +239,20 @@ function ResultBody({ view }: { view: ToolResultView }) {
           View in admin
           <ExternalLinkIcon className="size-3 opacity-60" />
         </a>
+        {view.credit && view.creditUrl && (
+          <p className="mt-1 text-muted-foreground text-xs">
+            Photo by{' '}
+            <a
+              href={view.creditUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-primary hover:underline"
+            >
+              {view.credit}
+            </a>{' '}
+            on Unsplash
+          </p>
+        )}
         {view.alt && (
           <p className="mt-1 truncate text-muted-foreground text-xs">Alt: {view.alt}</p>
         )}
@@ -246,16 +261,43 @@ function ResultBody({ view }: { view: ToolResultView }) {
   }
 
   if (view.kind === 'photo_search') {
-    // Full grid rendering is implemented in Task 7 (ToolResultCard photo_search view).
-    // This minimal branch satisfies the type exhaustion so Task 6 types compile.
+    if (view.photos.length === 0) {
+      return (
+        <div>
+          <div className="mb-1 font-medium">Unsplash search</div>
+          <p className="text-muted-foreground text-xs">No photos found for "{view.query}".</p>
+        </div>
+      )
+    }
     return (
       <div>
-        <div className="font-medium">
-          {view.query ? `Photos for "${view.query}"` : 'Photo search'}
+        <div className="mb-2 font-medium">
+          Unsplash photos for "{view.query}"
         </div>
-        <p className="text-muted-foreground text-xs">
-          {view.photos.length} result{view.photos.length !== 1 ? 's' : ''}
-        </p>
+        <div className="grid grid-cols-3 gap-2">
+          {view.photos.map((p: PhotoCandidate) => (
+            <div key={p.photoId} className="overflow-hidden rounded border">
+              <img
+                src={p.thumbUrl}
+                alt={p.description}
+                className="h-20 w-full object-cover"
+                referrerPolicy="no-referrer"
+              />
+              <div className="p-1">
+                <p className="line-clamp-1 text-xs font-medium">{p.description}</p>
+                <a
+                  href={p.photographerUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-0.5 text-muted-foreground text-xs hover:underline"
+                >
+                  {p.photographer}
+                  <ExternalLinkIcon className="size-2.5 opacity-60" />
+                </a>
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
     )
   }
@@ -284,7 +326,7 @@ function iconFor(view: ToolResultView): ReactNode {
     case 'media_image':
       return <ImageIcon className="size-4 text-purple-600" />
     case 'photo_search':
-      return <SearchIcon className="size-4 text-amber-600" />
+      return <ImageIcon className="size-4 text-amber-600" />
     case 'discovery':
       return <PlugIcon className="size-4" />
     case 'skill':

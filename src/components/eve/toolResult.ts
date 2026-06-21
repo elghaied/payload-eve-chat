@@ -9,6 +9,15 @@ export type AdminRecord = { id: string; label: string; href?: string }
 export type TodoStatus = 'pending' | 'in_progress' | 'completed' | 'cancelled'
 export type TodoItem = { content: string; status: TodoStatus; priority?: string }
 
+export type PhotoCandidate = {
+  photoId: string
+  description: string
+  thumbUrl: string
+  photographer: string
+  photographerUrl: string
+  unsplashUrl: string
+}
+
 export type ToolResultView =
   | { kind: 'web_search'; answer?: string; results: WebSearchItem[] }
   | { kind: 'web_fetch'; url: string; truncated: boolean; preview: string }
@@ -17,7 +26,8 @@ export type ToolResultView =
   | { kind: 'todos'; todos: TodoItem[]; total: number; completed: number }
   | { kind: 'skill'; name: string }
   | { kind: 'text'; text: string }
-  | { kind: 'media_image'; id: string; url: string; alt: string }
+  | { kind: 'media_image'; id: string; url: string; alt: string; credit?: string; creditUrl?: string }
+  | { kind: 'photo_search'; query: string; photos: PhotoCandidate[] }
   // Last-resort fallback: a clean "✓ <tool>" line — NEVER a raw-JSON dump.
   | { kind: 'done'; tool: string }
 
@@ -218,9 +228,26 @@ export function describeToolResult(part: EveDynamicToolPart): ToolResultView | n
     }
   }
 
-  // generateImage — our custom MCP tool. doc is stripped at the wire; structuredContent passes through.
-  // Detection: name === 'generateImage' AND structuredContent has id + url.
-  if (name === 'generateImage' && isObj(output)) {
+  // searchPhotos — Unsplash photo search. Returns structuredContent.photos[].
+  if (name === 'searchPhotos' && isObj(output)) {
+    const sc = output['structuredContent']
+    if (isObj(sc) && Array.isArray(sc['photos'])) {
+      const photos = (sc['photos'] as unknown[]).filter(isObj).map((p) => ({
+        photoId: typeof p['photoId'] === 'string' ? (p['photoId'] as string) : '',
+        description: typeof p['description'] === 'string' ? (p['description'] as string) : '',
+        thumbUrl: typeof p['thumbUrl'] === 'string' ? (p['thumbUrl'] as string) : '',
+        photographer: typeof p['photographer'] === 'string' ? (p['photographer'] as string) : '',
+        photographerUrl: typeof p['photographerUrl'] === 'string' ? (p['photographerUrl'] as string) : '',
+        unsplashUrl: typeof p['unsplashUrl'] === 'string' ? (p['unsplashUrl'] as string) : '',
+      }))
+      const queryInput = isObj(part.input) && typeof part.input['query'] === 'string' ? (part.input['query'] as string) : ''
+      return { kind: 'photo_search', query: queryInput, photos }
+    }
+  }
+
+  // generateImage / addPhotoToMedia — our custom MCP tools. doc is stripped at the wire; structuredContent passes through.
+  // Detection: name === 'generateImage' or 'addPhotoToMedia' AND structuredContent has id + url.
+  if ((name === 'generateImage' || name === 'addPhotoToMedia') && isObj(output)) {
     const sc = output['structuredContent']
     if (isObj(sc) && typeof sc['url'] === 'string' && typeof sc['id'] !== 'undefined') {
       return {
@@ -228,6 +255,8 @@ export function describeToolResult(part: EveDynamicToolPart): ToolResultView | n
         id: String(sc['id']),
         url: sc['url'] as string,
         alt: typeof sc['alt'] === 'string' ? (sc['alt'] as string) : '',
+        credit: typeof sc['credit'] === 'string' ? (sc['credit'] as string) : undefined,
+        creditUrl: typeof sc['creditUrl'] === 'string' ? (sc['creditUrl'] as string) : undefined,
       }
     }
     // structuredContent absent or incomplete → fall through to text from content[0].text
@@ -292,6 +321,8 @@ export function runningLabel(part: EveDynamicToolPart): string {
     return url ? `Reading ${url}…` : 'Reading page…'
   }
   if (name === 'generateImage') return 'Generating image…'
+  if (name === 'searchPhotos') return 'Searching Unsplash…'
+  if (name === 'addPhotoToMedia') return 'Saving photo to Media…'
   const titleish =
     isObj(input) && isObj(input['data']) && typeof (input['data'] as AnyRecord)['title'] === 'string'
       ? ` “${(input['data'] as AnyRecord)['title'] as string}”`

@@ -245,6 +245,21 @@ function ResultBody({ view }: { view: ToolResultView }) {
     )
   }
 
+  if (view.kind === 'photo_search') {
+    // Full grid rendering is implemented in Task 7 (ToolResultCard photo_search view).
+    // This minimal branch satisfies the type exhaustion so Task 6 types compile.
+    return (
+      <div>
+        <div className="font-medium">
+          {view.query ? `Photos for "${view.query}"` : 'Photo search'}
+        </div>
+        <p className="text-muted-foreground text-xs">
+          {view.photos.length} result{view.photos.length !== 1 ? 's' : ''}
+        </p>
+      </div>
+    )
+  }
+
   // Last-resort: a clean done line — we never dump raw JSON into the chat.
   return (
     <span className="text-muted-foreground">{humanizeToolName(view.tool)} completed</span>
@@ -268,6 +283,8 @@ function iconFor(view: ToolResultView): ReactNode {
       return <GlobeIcon className="size-4" />
     case 'media_image':
       return <ImageIcon className="size-4 text-purple-600" />
+    case 'photo_search':
+      return <SearchIcon className="size-4 text-amber-600" />
     case 'discovery':
       return <PlugIcon className="size-4" />
     case 'skill':

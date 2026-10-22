@@ -21,7 +21,7 @@ const PHOTO = {
 
 function makeArgs(inputOverrides: Record<string, unknown> = {}) {
   return {
-    authorizedMCP: { overrideAccess: true, user: { id: 'u1' } },
+    authorizedMCP: { overrideAccess: true },
     input: { query: 'mountain lake', ...inputOverrides },
     req: {} as PayloadRequest,
   }

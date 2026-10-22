@@ -2,6 +2,7 @@ import { mongooseAdapter } from '@payloadcms/db-mongodb'
 import { lexicalEditor } from '@payloadcms/richtext-lexical'
 import { mcpPlugin } from '@payloadcms/plugin-mcp'
 import { vercelBlobStorage } from '@payloadcms/storage-vercel-blob'
+import { sharpTransformer } from '@payloadcms/transformer-sharp'
 import path from 'path'
 import { buildConfig } from 'payload'
 import { fileURLToPath } from 'url'
@@ -17,6 +18,7 @@ import { generateImageTool } from './eve/generate-image-tool'
 import { searchPhotosTool } from './eve/unsplash-search-tool'
 import { addPhotosToMediaTool } from './eve/unsplash-add-multi-tool'
 import { customSidebarTabs } from './eve/sidebar-tabs'
+import { ALL_COLLECTION_TOOLS_OFF } from './eve/mcp-lockdown'
 
 const filename = fileURLToPath(import.meta.url)
 const dirname = path.dirname(filename)
@@ -59,26 +61,27 @@ export default buildConfig({
       process.env.MONGO_URL ||
       '',
   }),
-  sharp,
   // Media storage adapters (Payload v4 takes these in a top-level `storage` array, NOT in
   // `plugins`). The token is auto-injected by Vercel when a Blob store is linked to the project
   // (BLOB_READ_WRITE_TOKEN). When the token is unset (local dev), the adapter disables itself and
-  // Payload falls back to local disk (the gitignored /media directory). We register it
-  // unconditionally with alwaysInsertFields so the Media schema stays identical across dev and
-  // prod whether or not Blob is active.
+  // Payload falls back to local disk (the gitignored /media directory). v4 always inserts the
+  // adapter's hidden `prefix` field, so the Media schema stays identical across dev and prod
+  // whether or not Blob is active.
   storage: [
     vercelBlobStorage({
       enabled: Boolean(process.env.BLOB_READ_WRITE_TOKEN),
       collections: { media: true },
       token: process.env.BLOB_READ_WRITE_TOKEN,
-      alwaysInsertFields: true,
     }),
   ],
+  // v4 moved Sharp out of core: image processing is an upload transformer.
+  upload: { transformers: [sharpTransformer({ sharp })] },
   plugins: [
-    // v4 plugin-mcp uses an OPT-OUT model: every collection is exposed through the
-    // built-in CRUD tools (find/create/update/delete/getCollectionSchema) by default.
-    // We expose only posts and tasks (read/write, no delete) and explicitly disable
-    // every tool on the collections that must not be reachable over MCP.
+    // v4 plugin-mcp uses an OPT-OUT model: every collection is exposed through every
+    // built-in tool (find/count/findDistinct/create/update/duplicate/delete/...) by default.
+    // We expose only posts and tasks (read/write, no delete), read-only media, and turn
+    // off EVERY built-in on the collections that must not be reachable over MCP
+    // (ALL_COLLECTION_TOOLS_OFF fails typecheck if Payload adds a new built-in).
     mcpPlugin({
       collections: {
         posts: {
@@ -94,22 +97,24 @@ export default buildConfig({
           tools: { delete: false },
         },
         // Lock down everything not part of the demo surface.
-        users: {
-          tools: { find: false, create: false, update: false, delete: false, getCollectionSchema: false },
-        },
+        users: { tools: ALL_COLLECTION_TOOLS_OFF },
         media: {
           description:
             'Uploaded images. Use findDocuments to list existing images for reuse. ' +
             'To generate a new image, use the generateImage tool instead.',
-          // find + getCollectionSchema remain enabled (default on) so the agent can
-          // browse and reuse existing uploads. Generic create/update/delete are off:
-          // image creation goes through the generateImage tool which enforces the
+          // Read tools (find/count/findDistinct/getCollectionSchema) remain enabled so the
+          // agent can browse and reuse existing uploads. Every write path is off: image
+          // creation goes through the generateImage tool which enforces the
           // gateway → Buffer → Media.create path with correct mimetype and alt text.
-          tools: { create: false, update: false, delete: false },
+          tools: {
+            create: false,
+            update: false,
+            delete: false,
+            duplicate: false,
+            getUploadInstructions: false,
+          },
         },
-        conversations: {
-          tools: { find: false, create: false, update: false, delete: false, getCollectionSchema: false },
-        },
+        conversations: { tools: ALL_COLLECTION_TOOLS_OFF },
       },
       // Cross-cutting custom tools. createDocumentFromMarkdown converts Markdown ->
       // Lexical server-side so the agent can populate rich-text fields (e.g. a
@@ -133,18 +138,20 @@ export default buildConfig({
       // In development, bypass API key auth so the endpoint is reachable without
       // credentials. Grant exactly the items the plugin registered (i.e. the enabled
       // tools above) and run as the first admin user. Gated to development only.
+      // (Production uses the default resolver: a user API key in the Authorization header.)
       ...(process.env.NODE_ENV === 'development' && {
-        overrideAuth: async ({ req, pluginConfig }) => {
+        overrideGetAuthorizedMCP: async ({ req, pluginConfig }) => {
           const { docs } = await req.payload.find({
             collection: 'users',
             limit: 1,
             depth: 0,
             overrideAccess: true,
           })
+          // v4: the resolver must set req.user itself (null for anonymous).
+          req.user = docs[0] ? { ...docs[0], collection: 'users' } : null
           return {
             items: pluginConfig.items,
             overrideAccess: true,
-            user: docs[0] ?? null,
           }
         },
       }),

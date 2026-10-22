@@ -53,9 +53,10 @@ export const createDocumentFromMarkdownTool = defineTool({
   const doc = await req.payload.create({
     collection: input.collectionSlug,
     data: data as RequiredDataFromCollectionSlug<(typeof ALLOWED_COLLECTIONS)[number]>,
-    // Run with the MCP caller's identity and access, like the built-in tools.
+    // Run with the MCP caller's identity and access, like the built-in tools. v4: the caller
+    // is req.user (set by the MCP auth resolver), so pass req rather than a user.
     overrideAccess: authorizedMCP.overrideAccess,
-    user: authorizedMCP.user,
+    req,
   })
 
   return {

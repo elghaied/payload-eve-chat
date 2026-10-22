@@ -28,7 +28,7 @@ function makePayload() {
 }
 
 function makeUser() {
-  return { id: 'user-1' } as unknown as import('payload').TypedUser
+  return { id: 'user-1' } as unknown as import('payload').User
 }
 
 // ---------------------------------------------------------------------------

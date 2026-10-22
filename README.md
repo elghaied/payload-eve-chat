@@ -122,7 +122,8 @@ the model and are never persisted.
 
 ## Requirements
 
-Targets **Payload v4** (pinned to `canary`); requires **Node 24.15+** and **TypeScript 6+**. The
+Targets **Payload v4 beta** (pinned to `4.0.0-beta.3`) on **Next.js 16.4+**; requires
+**Node 24.15+** and **TypeScript 6+**. The
 stable Payload `3.85.1` version is preserved on the **`v3`** branch.
 
 ## Quick start (local)
@@ -143,7 +144,7 @@ stable Payload `3.85.1` version is preserved on the **`v3`** branch.
      Media and included in the article) and the Unsplash ToS download trigger are handled
      automatically.
 3. `pnpm install && pnpm devsafe` — installs deps and starts the dev server. `devsafe` clears the
-   `.next` cache to avoid a Payload-v4 canary stale-RSC-cache issue; plain `pnpm dev` can error on
+   `.next` cache to avoid a Payload v4 stale-RSC-cache issue; plain `pnpm dev` can error on
    stale chunks.
 4. Open <http://localhost:3000/admin>, create your first admin user, then open
    **AI Chat Agent (Eve)** in the sidebar (or go to `/admin/eve`) and start chatting.
@@ -264,23 +265,26 @@ is active, so `payload-types.ts` doesn't drift between dev and prod.
 
 ### MCP authentication: dev vs production
 
-In **development**, `/api/mcp` requires no API key (a dev-only `overrideAuth` runs as the first
-admin) — so MCP "just works" locally. **In production there is no bypass:** every `/api/mcp`
-request must carry a `Bearer` token that matches a key in the **`payload-mcp-api-keys`** collection
-(the token is validated as `HMAC-SHA256(PAYLOAD_SECRET, token)` against a stored row that has a
-user assigned). If this isn't set up, the agent can't discover *any* MCP tools and the chat reports
-*"the connection requires authorization."*
+In **development**, `/api/mcp` requires no API key (a dev-only `overrideGetAuthorizedMCP` runs as
+the first admin) — so MCP "just works" locally. **In production there is no bypass:** every
+`/api/mcp` request must authenticate as a Payload user with a **user API key**, sent with Payload's
+standard header `Authorization: users API-Key <key>` (the Eve connection builds this header from
+`MCP_API_KEY`). The agent then acts as that user, with that user's access control. If this isn't
+set up, the agent can't discover *any* MCP tools and the chat reports *"the connection requires
+authorization."*
 
-To set it up **in the production admin** (the key must be created there — it's hashed with the
-production `PAYLOAD_SECRET` and stored in the production DB):
+To set it up **in the production admin** (the key lives in the production DB and is indexed with the
+production `PAYLOAD_SECRET`):
 
-1. Open the admin → **top-right account menu → Settings → MCP** (plugin-mcp registers it there via
-   `userMenuSettingsItems`; it is intentionally **not** in the left nav). Or go straight to
-   `/admin/collections/payload-mcp-api-keys` → **Create New**.
-2. Give it a label, **assign your user** (required), leave the access fields at default (all tools
-   allowed), and save. Copy the generated key value (shown once).
+1. Open **Users → the user Eve should act as** (e.g. your admin account; API keys are enabled on
+   the Users collection via `auth.useAPIKey`).
+2. In the **API Key** field, **Generate new API key**, copy it, and **Save** the user.
 3. Set `MCP_API_KEY` (Production) in Vercel to that exact value and **redeploy**. Don't change
-   `PAYLOAD_SECRET` afterward, or the key's hash stops matching.
+   `PAYLOAD_SECRET` afterward, or the key stops matching.
+
+> **Upgrading from the Payload v4 canary?** The old `payload-mcp-api-keys` collection (and its
+> Bearer tokens) was removed in the v4 beta — create a user API key as above and replace
+> `MCP_API_KEY`.
 
 ## The Vercel Eve framework
 

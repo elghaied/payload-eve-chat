@@ -38,7 +38,7 @@ function errorMessage(err: unknown): { text: string; isError: true } {
 export async function searchPhotosHandler({
   input,
 }: {
-  authorizedMCP: { overrideAccess: boolean; user: unknown }
+  authorizedMCP: { overrideAccess: boolean }
   input: { query: string; perPage?: number }
   req: PayloadRequest
 }) {

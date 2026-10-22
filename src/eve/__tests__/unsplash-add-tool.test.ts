@@ -37,7 +37,7 @@ function makeImageFetch(contentType = 'image/jpeg') {
 
 function makeArgs(overrides: Record<string, unknown> = {}, req?: PayloadRequest) {
   return {
-    authorizedMCP: { overrideAccess: true, user: { id: 'u1' } },
+    authorizedMCP: { overrideAccess: true },
     photoId: 'abc123',
     alt: 'mountain lake',
     req: req ?? makeReq(),

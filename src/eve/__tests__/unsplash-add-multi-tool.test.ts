@@ -17,7 +17,7 @@ const saved = (id: string) => ({
 
 function args(photos: Array<{ photoId: string; alt: string }>) {
   return {
-    authorizedMCP: { overrideAccess: true, user: { id: 'u1' } },
+    authorizedMCP: { overrideAccess: true },
     input: { photos },
     req: { payload: {} } as unknown as PayloadRequest,
   }

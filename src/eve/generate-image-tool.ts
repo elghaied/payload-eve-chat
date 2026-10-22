@@ -12,7 +12,7 @@ export async function generateImageHandler({
   input,
   req,
 }: {
-  authorizedMCP: { overrideAccess: boolean; user: unknown }
+  authorizedMCP: { overrideAccess: boolean }
   input: { prompt: string; alt: string; aspectRatio: string }
   req: PayloadRequest
 }) {
@@ -48,7 +48,6 @@ export async function generateImageHandler({
     data: { alt: input.alt } as never,
     file: { data: buf, mimetype: mediaType, name, size: buf.length },
     overrideAccess: authorizedMCP.overrideAccess,
-    user: authorizedMCP.user,
     req,
   })
 

@@ -1,7 +1,6 @@
 'use client'
 import React, { useCallback, useEffect, useState } from 'react'
-import { useRouter } from '@payloadcms/ui'
-import { usePathname, useSearchParams } from 'next/navigation'
+import { usePathname, useRouter, useSearchParams } from '@payloadcms/ui'
 
 export type ConversationSummary = { id: string; title: string }
 
@@ -27,8 +26,8 @@ export function dispatchConversationCreated(detail: ConversationCreatedDetail): 
 const wrapStyle: React.CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
-  gap: 'var(--base, 4px)',
-  padding: 'calc(var(--base, 20px) / 2)',
+  gap: 'var(--spacer-1)',
+  padding: 'var(--spacer-2)',
 }
 const newBtnStyle: React.CSSProperties = {
   textAlign: 'left',
@@ -112,12 +111,8 @@ export const ConversationHistoryPanel: React.FC<{
                 type="button"
                 aria-current={isActive ? 'page' : undefined}
                 onClick={() => openConversation(c.id)}
-                className="nav__link"
-                style={{
-                  ...itemBaseStyle,
-                  fontWeight: isActive ? 600 : undefined,
-                  background: isActive ? 'var(--theme-elevation-100)' : undefined,
-                }}
+                className={isActive ? 'nav__link nav__link--selected' : 'nav__link'}
+                style={itemBaseStyle}
               >
                 {c.title || 'Untitled'}
               </button>

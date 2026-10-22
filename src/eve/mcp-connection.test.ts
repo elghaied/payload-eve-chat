@@ -2,7 +2,11 @@ import { describe, it, expect, afterEach } from 'vitest'
 // The connection lives under agent/ (Eve discovers agent/connections/* as connections),
 // so its test must NOT sit in that directory — Eve would try to load the .test file as a
 // connection and fail discovery. Test the exported helpers from here instead.
-import { mcpAuthHeaderToken, resolveMcpServerUrl } from '../../agent/connections/payload-mcp'
+import {
+  mcpApiKeyAuthorization,
+  mcpAuthHeaderToken,
+  resolveMcpServerUrl,
+} from '../../agent/connections/payload-mcp'
 
 describe('mcpAuthHeaderToken', () => {
   it('returns the trimmed key when set', () => {
@@ -11,6 +15,14 @@ describe('mcpAuthHeaderToken', () => {
   it('returns undefined when unset or blank', () => {
     expect(mcpAuthHeaderToken(undefined)).toBeUndefined()
     expect(mcpAuthHeaderToken('   ')).toBeUndefined()
+  })
+})
+
+describe('mcpApiKeyAuthorization', () => {
+  // Payload v4 MCP authenticates with Payload's standard user API-key header,
+  // not a Bearer token.
+  it('formats the Payload user API-key Authorization header', () => {
+    expect(mcpApiKeyAuthorization('abc')).toBe('users API-Key abc')
   })
 })
 

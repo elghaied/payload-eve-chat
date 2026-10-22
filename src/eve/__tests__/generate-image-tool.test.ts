@@ -27,7 +27,6 @@ const makeReq = (createResult: Record<string, unknown>) => ({
 
 const makeAuthorizedMCP = () => ({
   overrideAccess: true,
-  user: { id: 'u1', email: 'admin@example.com' },
 })
 
 // Helper: calls the statically-imported generateImageHandler directly.

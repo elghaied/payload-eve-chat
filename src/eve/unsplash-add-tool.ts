@@ -31,7 +31,7 @@ export type SavePhotoArgs = {
   photoId: string
   alt: string
   req: PayloadRequest
-  authorizedMCP: { overrideAccess: boolean; user: unknown }
+  authorizedMCP: { overrideAccess: boolean }
 }
 
 /**
@@ -105,7 +105,6 @@ export async function savePhotoToMedia(
     data: { alt, credit: photo.user.name, creditUrl } as never,
     file: { data: buf, mimetype, name, size: buf.length },
     overrideAccess: authorizedMCP.overrideAccess,
-    user: authorizedMCP.user,
     req,
   })
 

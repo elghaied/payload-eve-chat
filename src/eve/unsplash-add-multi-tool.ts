@@ -10,7 +10,7 @@ export async function addPhotosToMediaHandler({
   input,
   req,
 }: {
-  authorizedMCP: { overrideAccess: boolean; user: unknown }
+  authorizedMCP: { overrideAccess: boolean }
   input: { photos: Array<{ photoId: string; alt: string }> }
   req: PayloadRequest
 }) {

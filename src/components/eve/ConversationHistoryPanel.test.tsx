@@ -2,11 +2,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, cleanup, act } from '@testing-library/react'
 
 const pushMock = vi.fn()
-vi.mock('@payloadcms/ui', () => ({ useRouter: () => ({ push: pushMock }) }))
-
 let mockPathname = '/admin/eve'
 let mockSearch = new URLSearchParams('')
-vi.mock('next/navigation', () => ({
+// v4: admin router hooks come from @payloadcms/ui (framework-agnostic), not next/navigation.
+vi.mock('@payloadcms/ui', () => ({
+  useRouter: () => ({ push: pushMock }),
   usePathname: () => mockPathname,
   useSearchParams: () => mockSearch,
 }))

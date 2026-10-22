@@ -20,7 +20,9 @@ describe('payload.config.ts MCP configuration', () => {
   it('enables media find and getCollectionSchema (only create/update/delete are false)', () => {
     // The media block must NOT have find:false or getCollectionSchema:false
     // Check the block has the right shape
-    expect(configSource).toContain("tools: { create: false, update: false, delete: false }")
+    expect(configSource).toMatch(
+      /media: \{[\s\S]*?tools: \{\s*create: false,\s*update: false,\s*delete: false,\s*duplicate: false,\s*getUploadInstructions: false,\s*\}/,
+    )
     // Ensure find:false is no longer present in the media block
     const mediaBlockStart = configSource.indexOf("media: {")
     const mediaBlockEnd = configSource.indexOf('},', mediaBlockStart)
@@ -33,6 +35,21 @@ describe('payload.config.ts MCP configuration', () => {
     expect(configSource).toContain('create: false')
     expect(configSource).toContain('update: false')
     expect(configSource).toContain('delete: false')
+  })
+})
+
+describe('payload.config.ts MCP lockdown', () => {
+  it('turns off every built-in tool on users and conversations', () => {
+    expect(configSource).toContain('users: { tools: ALL_COLLECTION_TOOLS_OFF }')
+    expect(configSource).toContain('conversations: { tools: ALL_COLLECTION_TOOLS_OFF }')
+  })
+})
+
+describe('payload.config.ts MCP auth', () => {
+  it('uses the v4 overrideGetAuthorizedMCP hook (overrideAuth was removed), dev-only', () => {
+    expect(configSource).not.toContain('overrideAuth:')
+    expect(configSource).toContain("process.env.NODE_ENV === 'development' && {\n        overrideGetAuthorizedMCP")
+    expect(configSource).toContain('req.user =')
   })
 })
 
@@ -84,8 +101,10 @@ describe('payload.config.ts media storage + database url', () => {
     expect(configSource).toContain('token: process.env.BLOB_READ_WRITE_TOKEN')
   })
 
-  it('keeps the Media schema consistent across environments (alwaysInsertFields)', () => {
-    expect(configSource).toContain('alwaysInsertFields: true')
+  it('registers Sharp as a v4 upload transformer (not the removed top-level sharp option)', () => {
+    expect(configSource).toContain("from '@payloadcms/transformer-sharp'")
+    expect(configSource).toContain('transformers: [sharpTransformer({ sharp })]')
+    expect(configSource).not.toMatch(/^  sharp,$/m)
   })
 
   it('falls back across common MongoDB env var names for the Vercel Atlas integration', () => {

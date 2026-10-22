@@ -1,3 +1,4 @@
+import { LLMInstructionsMenuItem as LLMInstructionsMenuItem_3817bf644402e67bfe6577f60ef982de } from '@payloadcms/ui'
 import { RscEntryLexicalCell as RscEntryLexicalCell_44fe37237e0ebf4470c9990d8cb7b07e } from '@payloadcms/richtext-lexical/rsc'
 import { RscEntryLexicalField as RscEntryLexicalField_44fe37237e0ebf4470c9990d8cb7b07e } from '@payloadcms/richtext-lexical/rsc'
 import { LexicalDiffComponent as LexicalDiffComponent_44fe37237e0ebf4470c9990d8cb7b07e } from '@payloadcms/richtext-lexical/rsc'
@@ -21,18 +22,25 @@ import { StrikethroughFeatureClient as StrikethroughFeatureClient_e70f5e05f09f93
 import { UnderlineFeatureClient as UnderlineFeatureClient_e70f5e05f09f93e00b997edb1ef0c864 } from '@payloadcms/richtext-lexical/client'
 import { BoldFeatureClient as BoldFeatureClient_e70f5e05f09f93e00b997edb1ef0c864 } from '@payloadcms/richtext-lexical/client'
 import { ItalicFeatureClient as ItalicFeatureClient_e70f5e05f09f93e00b997edb1ef0c864 } from '@payloadcms/richtext-lexical/client'
-import { APIKeyField as APIKeyField_210e1789eef737e0b4d9f054258f19bb } from '@payloadcms/plugin-mcp/client'
-import { AccessField as AccessField_210e1789eef737e0b4d9f054258f19bb } from '@payloadcms/plugin-mcp/client'
-import { APIKeysEmptyState as APIKeysEmptyState_210e1789eef737e0b4d9f054258f19bb } from '@payloadcms/plugin-mcp/client'
-import { MCPSettingsMenu as MCPSettingsMenu_210e1789eef737e0b4d9f054258f19bb } from '@payloadcms/plugin-mcp/client'
-import { VercelBlobClientUploadHandler as VercelBlobClientUploadHandler_16c82c5e25f430251a3e3ba57219ff4e } from '@payloadcms/storage-vercel-blob/client'
+import { LLMInstructionsDescription as LLMInstructionsDescription_3817bf644402e67bfe6577f60ef982de } from '@payloadcms/ui'
+import { FixedToolbarFeatureClient as FixedToolbarFeatureClient_e70f5e05f09f93e00b997edb1ef0c864 } from '@payloadcms/richtext-lexical/client'
+import { LLMInstructionsCell as LLMInstructionsCell_ab83ff7e88da8d3530831f296ec4756a } from '@payloadcms/ui/rsc'
 import { EveChatTabIcon as EveChatTabIcon_e7722af43083d192d7c294d5f5457ffe } from '../../../components/eve/EveChatTabIcon'
 import { EveChatTab as EveChatTab_09db0fdc59542043b94afe2dfb61dc2f } from '../../../components/eve/EveChatTab'
 import { EveView as EveView_3aa04f982e779067b4fb817502ff73f1 } from '../../../components/eve/EveView'
+import { WelcomeWidget as WelcomeWidget_ab83ff7e88da8d3530831f296ec4756a } from '@payloadcms/ui/rsc'
 import { CollectionCards as CollectionCards_ab83ff7e88da8d3530831f296ec4756a } from '@payloadcms/ui/rsc'
+import { CollectionQueryWidget as CollectionQueryWidget_ab83ff7e88da8d3530831f296ec4756a } from '@payloadcms/ui/rsc'
+import { QueryPresetsWhereField as QueryPresetsWhereField_3817bf644402e67bfe6577f60ef982de } from '@payloadcms/ui'
+import { CollectionQuerySortField as CollectionQuerySortField_3817bf644402e67bfe6577f60ef982de } from '@payloadcms/ui'
+import { RecentlyViewedWidget as RecentlyViewedWidget_ab83ff7e88da8d3530831f296ec4756a } from '@payloadcms/ui/rsc'
+import { RecentlyViewedCollectionsField as RecentlyViewedCollectionsField_3817bf644402e67bfe6577f60ef982de } from '@payloadcms/ui'
+import { UploadDropzoneWidget as UploadDropzoneWidget_ab83ff7e88da8d3530831f296ec4756a } from '@payloadcms/ui/rsc'
+import { UploadDropzoneCollectionsField as UploadDropzoneCollectionsField_3817bf644402e67bfe6577f60ef982de } from '@payloadcms/ui'
 
 /** @type import('payload').ImportMap */
 export const importMap = {
+  "@payloadcms/ui#LLMInstructionsMenuItem": LLMInstructionsMenuItem_3817bf644402e67bfe6577f60ef982de,
   "@payloadcms/richtext-lexical/rsc#RscEntryLexicalCell": RscEntryLexicalCell_44fe37237e0ebf4470c9990d8cb7b07e,
   "@payloadcms/richtext-lexical/rsc#RscEntryLexicalField": RscEntryLexicalField_44fe37237e0ebf4470c9990d8cb7b07e,
   "@payloadcms/richtext-lexical/rsc#LexicalDiffComponent": LexicalDiffComponent_44fe37237e0ebf4470c9990d8cb7b07e,
@@ -56,13 +64,19 @@ export const importMap = {
   "@payloadcms/richtext-lexical/client#UnderlineFeatureClient": UnderlineFeatureClient_e70f5e05f09f93e00b997edb1ef0c864,
   "@payloadcms/richtext-lexical/client#BoldFeatureClient": BoldFeatureClient_e70f5e05f09f93e00b997edb1ef0c864,
   "@payloadcms/richtext-lexical/client#ItalicFeatureClient": ItalicFeatureClient_e70f5e05f09f93e00b997edb1ef0c864,
-  "@payloadcms/plugin-mcp/client#APIKeyField": APIKeyField_210e1789eef737e0b4d9f054258f19bb,
-  "@payloadcms/plugin-mcp/client#AccessField": AccessField_210e1789eef737e0b4d9f054258f19bb,
-  "@payloadcms/plugin-mcp/client#APIKeysEmptyState": APIKeysEmptyState_210e1789eef737e0b4d9f054258f19bb,
-  "@payloadcms/plugin-mcp/client#MCPSettingsMenu": MCPSettingsMenu_210e1789eef737e0b4d9f054258f19bb,
-  "@payloadcms/storage-vercel-blob/client#VercelBlobClientUploadHandler": VercelBlobClientUploadHandler_16c82c5e25f430251a3e3ba57219ff4e,
+  "@payloadcms/ui#LLMInstructionsDescription": LLMInstructionsDescription_3817bf644402e67bfe6577f60ef982de,
+  "@payloadcms/richtext-lexical/client#FixedToolbarFeatureClient": FixedToolbarFeatureClient_e70f5e05f09f93e00b997edb1ef0c864,
+  "@payloadcms/ui/rsc#LLMInstructionsCell": LLMInstructionsCell_ab83ff7e88da8d3530831f296ec4756a,
   "/components/eve/EveChatTabIcon#EveChatTabIcon": EveChatTabIcon_e7722af43083d192d7c294d5f5457ffe,
   "/components/eve/EveChatTab#EveChatTab": EveChatTab_09db0fdc59542043b94afe2dfb61dc2f,
   "/components/eve/EveView#EveView": EveView_3aa04f982e779067b4fb817502ff73f1,
-  "@payloadcms/ui/rsc#CollectionCards": CollectionCards_ab83ff7e88da8d3530831f296ec4756a
+  "@payloadcms/ui/rsc#WelcomeWidget": WelcomeWidget_ab83ff7e88da8d3530831f296ec4756a,
+  "@payloadcms/ui/rsc#CollectionCards": CollectionCards_ab83ff7e88da8d3530831f296ec4756a,
+  "@payloadcms/ui/rsc#CollectionQueryWidget": CollectionQueryWidget_ab83ff7e88da8d3530831f296ec4756a,
+  "@payloadcms/ui#QueryPresetsWhereField": QueryPresetsWhereField_3817bf644402e67bfe6577f60ef982de,
+  "@payloadcms/ui#CollectionQuerySortField": CollectionQuerySortField_3817bf644402e67bfe6577f60ef982de,
+  "@payloadcms/ui/rsc#RecentlyViewedWidget": RecentlyViewedWidget_ab83ff7e88da8d3530831f296ec4756a,
+  "@payloadcms/ui#RecentlyViewedCollectionsField": RecentlyViewedCollectionsField_3817bf644402e67bfe6577f60ef982de,
+  "@payloadcms/ui/rsc#UploadDropzoneWidget": UploadDropzoneWidget_ab83ff7e88da8d3530831f296ec4756a,
+  "@payloadcms/ui#UploadDropzoneCollectionsField": UploadDropzoneCollectionsField_3817bf644402e67bfe6577f60ef982de
 }

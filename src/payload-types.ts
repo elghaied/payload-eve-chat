@@ -297,7 +297,6 @@ export interface Conversation {
   title?: string | null;
   user: string | User;
   eveSessionId?: string | null;
-  continuationToken?: string | null;
   streamIndex?: number | null;
   createdBy?: {
     relationTo: 'users';
@@ -518,7 +517,6 @@ export interface ConversationsSelect<T extends boolean = true> {
   title?: T;
   user?: T;
   eveSessionId?: T;
-  continuationToken?: T;
   streamIndex?: T;
   createdBy?: T;
   updatedBy?: T;

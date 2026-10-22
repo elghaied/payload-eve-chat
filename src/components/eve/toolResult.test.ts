@@ -30,10 +30,13 @@ describe('helpers', () => {
     expect(adminHref(undefined, '1')).toBeUndefined()
     expect(adminHref('tasks', undefined)).toBeUndefined()
   })
-  it('bareToolName strips the connection__<conn>__ prefix', () => {
+  it('bareToolName strips the <connection>__ prefix (eve 0.8x naming)', () => {
+    expect(bareToolName('payload-mcp__createDocumentFromMarkdown')).toBe('createDocumentFromMarkdown')
+    expect(bareToolName('web_search')).toBe('web_search')
+  })
+  it('bareToolName still strips the legacy connection__<conn>__ prefix (older saved sessions)', () => {
     expect(bareToolName('connection__payload-mcp__createDocument')).toBe('createDocument')
     expect(bareToolName('connection__search')).toBe('search')
-    expect(bareToolName('web_search')).toBe('web_search')
   })
 })
 
@@ -183,6 +186,31 @@ describe('describeToolResult', () => {
     }
   })
 
+  it('renders eve__search discovery (eve 0.8x { results }) as a tool summary, not JSON', () => {
+    const v = describeToolResult(
+      part({
+        state: 'output-available',
+        toolName: 'eve__search',
+        toolMetadata: { eve: { kind: 'tool-call', name: 'eve__search' } },
+        input: { query: 'payload-mcp__' },
+        output: {
+          results: [
+            { tool: 'payload-mcp__createDocumentFromMarkdown', description: 'Create from Markdown', signature: '…' },
+            { tool: 'payload-mcp__findDocuments', description: 'Find documents', signature: '…' },
+          ],
+          searched: 12,
+          remaining: 0,
+        },
+      }),
+    )
+    expect(v?.kind).toBe('discovery')
+    if (v?.kind === 'discovery') {
+      expect(v.count).toBe(2)
+      expect(v.connection).toBe('payload-mcp')
+      expect(v.tools).toEqual(['createDocumentFromMarkdown', 'findDocuments'])
+    }
+  })
+
   it('renders the todo list as a checklist view', () => {
     const v = describeToolResult(
       part({
@@ -256,6 +284,16 @@ describe('describeToolResult', () => {
 })
 
 describe('runningLabel', () => {
+  it('labels eve 0.8x catalog tools', () => {
+    expect(runningLabel(part({ state: 'input-available', toolName: 'eve__search', input: { query: 'post' } }))).toBe('Finding available tools…')
+    expect(
+      runningLabel(part({ state: 'input-available', toolName: 'eve__skill', input: { name: 'article-writing' } })),
+    ).toBe('Loading the article-writing skill…')
+    expect(
+      runningLabel(part({ state: 'input-available', toolName: 'payload-mcp__generateImage', input: {} })),
+    ).toBe('Generating image…')
+  })
+
   it('web_search / web_fetch / create', () => {
     expect(runningLabel(part({ state: 'input-available', toolName: 'web_search', input: {} }))).toBe('Searching the web…')
     expect(runningLabel(part({ state: 'input-available', toolName: 'web_fetch', input: { url: 'https://www.x.com/a' } }))).toBe('Reading x.com…')
@@ -266,6 +304,22 @@ describe('runningLabel', () => {
 })
 
 describe('media_image detection', () => {
+  it('detects generateImage under the eve 0.8x <connection>__<tool> name', () => {
+    const v = describeToolResult(
+      part({
+        state: 'output-available',
+        toolName: 'payload-mcp__generateImage',
+        toolMetadata: { eve: { kind: 'tool-call', name: 'payload-mcp__generateImage' } },
+        input: { prompt: 'hero', alt: 'A hero image' },
+        output: {
+          content: [{ type: 'text', text: 'Generated image saved to Media (id: img-9).' }],
+          structuredContent: { id: 'img-9', url: '/media/hero.png', alt: 'A hero image' },
+        },
+      }),
+    )
+    expect(v?.kind).toBe('media_image')
+  })
+
   it('returns media_image when generateImage has structuredContent with url + id', () => {
     const v = describeToolResult(
       part({

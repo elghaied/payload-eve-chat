@@ -25,7 +25,7 @@ export async function updateConversationCursor(
   payload: Payload,
   eveSessionId: string,
   user: User,
-  cursor: { continuationToken?: string; streamIndex?: number; title?: string },
+  cursor: { streamIndex?: number; title?: string },
 ): Promise<void> {
   const res = await payload.find({
     collection: 'conversations',

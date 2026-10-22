@@ -81,7 +81,7 @@ describe('POST /api/eve/session-index', () => {
 
   it('returns 400 when eveSessionId is missing', async () => {
     authMock.mockResolvedValue({ user: fakeUser })
-    const res = await POST(makeRequest({ continuationToken: 'tok' }))
+    const res = await POST(makeRequest({ streamIndex: 1 }))
     expect(res.status).toBe(400)
   })
 
@@ -94,7 +94,6 @@ describe('POST /api/eve/session-index', () => {
     const res = await POST(
       makeRequest({
         eveSessionId: 'sess_new',
-        continuationToken: 'tok',
         streamIndex: 3,
         title: 'Hello Eve',
       }),
@@ -119,7 +118,7 @@ describe('POST /api/eve/session-index', () => {
     createConversationMock.mockRejectedValue(new Error('duplicate key: eveSessionId')) // ...but a concurrent request created it
     updateConversationCursorMock.mockResolvedValue(undefined)
 
-    const res = await POST(makeRequest({ eveSessionId: 'sess_race', continuationToken: 'tok', streamIndex: 1 }))
+    const res = await POST(makeRequest({ eveSessionId: 'sess_race', streamIndex: 1 }))
 
     expect(res.status).toBe(200)
     expect(await res.json()).toEqual({ ok: true })
@@ -135,7 +134,6 @@ describe('POST /api/eve/session-index', () => {
     const res = await POST(
       makeRequest({
         eveSessionId: 'sess_existing',
-        continuationToken: 'tok2',
         streamIndex: 5,
       }),
     )

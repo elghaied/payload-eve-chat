@@ -34,12 +34,8 @@ export const EveView: React.FC<AdminViewServerProps> = async ({
 
   const activeRow =
     user && activeId ? await loadConversationBySession(req.payload, activeId, user) : null
-  const initialSession = activeRow
-    ? {
-        sessionId: activeRow.eveSessionId ?? undefined,
-        continuationToken: activeRow.continuationToken ?? undefined,
-        streamIndex: activeRow.streamIndex ?? 0,
-      }
+  const initialSession = activeRow?.eveSessionId
+    ? { sessionId: activeRow.eveSessionId, streamIndex: activeRow.streamIndex ?? 0 }
     : undefined
 
   return (

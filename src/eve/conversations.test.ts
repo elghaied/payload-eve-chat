@@ -10,7 +10,6 @@ type StubConversation = {
   title?: string | null
   user: string
   eveSessionId?: string | null
-  continuationToken?: string | null
   streamIndex?: number | null
   updatedAt: string
   createdAt: string
@@ -181,14 +180,14 @@ describe('updateConversationCursor', () => {
     vi.mocked(payload.update).mockResolvedValue(conv)
 
     await updateConversationCursor(payload, 'sess-abc', user as any, {
-      continuationToken: 'tok-1',
       streamIndex: 5,
+      title: 'Thread',
     })
 
     expect(payload.update).toHaveBeenCalledWith({
       collection: 'conversations',
       id: 'c1',
-      data: { continuationToken: 'tok-1', streamIndex: 5 },
+      data: { streamIndex: 5, title: 'Thread' },
       overrideAccess: false,
       user,
     })
@@ -204,7 +203,7 @@ describe('updateConversationCursor', () => {
     vi.mocked(payload.find).mockResolvedValue({ docs: [], totalDocs: 0, totalPages: 0, page: 1, limit: 1, hasNextPage: false, hasPrevPage: false, pagingCounter: 1, nextPage: null, prevPage: null } as any)
 
     await updateConversationCursor(payload, 'nonexistent', user as any, {
-      continuationToken: 'tok-x',
+      streamIndex: 2,
     })
 
     expect(payload.update).not.toHaveBeenCalled()
@@ -221,7 +220,6 @@ describe('updateConversationCursor', () => {
 
     const callArg = vi.mocked(payload.update).mock.calls[0][0]
     expect((callArg as any).data).toEqual({ title: 'New title' })
-    expect((callArg as any).data).not.toHaveProperty('continuationToken')
     expect((callArg as any).data).not.toHaveProperty('streamIndex')
   })
 })

@@ -50,6 +50,29 @@ export function showWorkingIndicator(args: {
 }
 
 /**
+ * The message of the most recent turn if it FAILED and no newer turn has started, else null.
+ *
+ * eve 0.8x reports a non-terminal `turn.failed` followed by `session.waiting`, so the hook's
+ * `status` returns to "ready" (the next message can retry) instead of "error" — without this
+ * the failure (e.g. an expired AI Gateway token) would render as a reply that silently stopped.
+ */
+export function latestTurnFailure(
+  events: readonly { type: string; data?: unknown }[],
+): string | null {
+  for (let i = events.length - 1; i >= 0; i--) {
+    const e = events[i]!
+    if (e.type === 'turn.failed') {
+      const data = e.data as { message?: unknown } | undefined
+      return typeof data?.message === 'string' && data.message ? data.message : 'The request failed.'
+    }
+    if (e.type === 'turn.started' || e.type === 'turn.completed' || e.type === 'turn.cancelled') {
+      return null
+    }
+  }
+  return null
+}
+
+/**
  * Shown when a turn ends in a terminal error (`agent.status === "error"`), which previously
  * rendered nothing — the reply just silently stopped (e.g. an expired AI Gateway token).
  */

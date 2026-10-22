@@ -45,20 +45,25 @@ type AnyRecord = Record<string, unknown>
 const isObj = (v: unknown): v is AnyRecord => typeof v === 'object' && v !== null
 
 /**
- * Eve qualifies connection (MCP) tools as `connection__<conn>__<tool>` and its built-in
- * discovery tool as `connection__search`. Strip the prefix to the bare tool name so
- * matching + labels read `createDocument` / `search`, not `connection payload mcp create…`.
+ * Eve qualifies connection (MCP) tools as `<connection>__<tool>` (e.g.
+ * `payload-mcp__generateImage`); eve < 0.18 used `connection__<conn>__<tool>`, which older
+ * saved sessions still replay. Strip everything up to the last `__` so matching + labels read
+ * the bare tool name. (Our own tool names never contain `__`.)
  */
 export function bareToolName(name: string): string {
-  const m = name.match(/^connection__(?:.+__)?(.+)$/)
-  return m ? m[1]! : name
+  const i = name.lastIndexOf('__')
+  return i >= 0 ? name.slice(i + 2) : name
 }
+
+/** Eve's tool-discovery call: `eve__search` (eve 0.8x) or legacy `connection__search`. */
+const isDiscoveryTool = (rawName: string) =>
+  rawName === 'eve__search' || rawName === 'connection__search' || rawName === 'connection_search'
 
 const TODO_STATUSES: TodoStatus[] = ['pending', 'in_progress', 'completed', 'cancelled']
 const asTodoStatus = (v: unknown): TodoStatus =>
   typeof v === 'string' && (TODO_STATUSES as string[]).includes(v) ? (v as TodoStatus) : 'pending'
 
-/** A connection_search result item: { connection, description, tool?, ... }. */
+/** A legacy connection_search result item: { connection, description, tool?, ... }. */
 const isDiscoveryItem = (v: unknown): v is AnyRecord =>
   isObj(v) && typeof v['connection'] === 'string' && typeof v['description'] === 'string'
 
@@ -164,14 +169,23 @@ export function describeToolResult(part: EveDynamicToolPart): ToolResultView | n
   const rawName = part.toolMetadata?.eve?.name ?? part.toolName
   const name = bareToolName(rawName)
 
-  // connection_search — Eve's built-in tool discovery. Output is an array of
-  // { connection, description, tool?, inputSchema? }. Show a quiet "found N tools"
-  // summary, NEVER the raw schema dump.
+  // Tool discovery (eve__search; legacy connection__search). Show a quiet "found N tools"
+  // summary, NEVER the raw schema dump. eve 0.8x returns { results: [{ tool, description,
+  // signature }] } with qualified `<connection>__<tool>` names; the legacy output was an array
+  // of { connection, tool?, description }.
   if (
-    rawName === 'connection_search' ||
-    rawName === 'connection__search' ||
+    isDiscoveryTool(rawName) ||
     (Array.isArray(output) && output.length > 0 && output.every(isDiscoveryItem))
   ) {
+    if (isObj(output) && Array.isArray(output['results'])) {
+      const qualified = (output['results'] as unknown[])
+        .filter(isObj)
+        .map((r) => (typeof r['tool'] === 'string' ? (r['tool'] as string) : ''))
+        .filter((t) => t.length > 0)
+      const first = qualified.find((t) => t.includes('__'))
+      const connection = first ? first.slice(0, first.lastIndexOf('__')) : undefined
+      return { kind: 'discovery', connection, tools: qualified.map(bareToolName), count: qualified.length }
+    }
     const items = Array.isArray(output) ? output.filter(isDiscoveryItem) : []
     const tools = items
       .map((it) => (typeof it['tool'] === 'string' ? (it['tool'] as string) : ''))
@@ -339,11 +353,14 @@ export function runningLabel(part: EveDynamicToolPart): string {
   const rawName = part.toolMetadata?.eve?.name ?? part.toolName
   const name = bareToolName(rawName)
   const input = part.input
-  if (rawName === 'connection_search' || rawName === 'connection__search')
-    return 'Finding available tools…'
+  if (isDiscoveryTool(rawName)) return 'Finding available tools…'
   if (name === 'todo') return 'Updating the plan…'
-  if (name === 'load_skill') {
-    const skillName = isObj(input) && typeof input['skill'] === 'string' ? (input['skill'] as string) : ''
+  // eve__skill({ name }) in eve 0.8x; legacy load_skill({ skill }).
+  if (rawName === 'eve__skill' || name === 'load_skill') {
+    const skillName =
+      isObj(input) && typeof (input['name'] ?? input['skill']) === 'string'
+        ? ((input['name'] ?? input['skill']) as string)
+        : ''
     return skillName ? `Loading the ${skillName} skill…` : 'Loading skill…'
   }
   if (name === 'web_search') return 'Searching the web…'

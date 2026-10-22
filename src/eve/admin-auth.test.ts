@@ -1,3 +1,5 @@
+// @vitest-environment node
+// (Server-side module: eve 0.8x's channel runtime probes `location` on import and breaks under jsdom.)
 import { describe, it, expect, vi, afterEach } from 'vitest'
 // The helper lives under agent/ (Eve bundles agent/* into its runtime); the test lives
 // here in src/ (Eve must not discover *.test files under agent/).

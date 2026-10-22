@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
-import { ErrorNotice, ThinkingIndicator, showWorkingIndicator } from './ChatStatus'
+import { ErrorNotice, ThinkingIndicator, latestTurnFailure, showWorkingIndicator } from './ChatStatus'
 
 afterEach(cleanup)
 
@@ -68,5 +68,35 @@ describe('ErrorNotice', () => {
     rerender(<ErrorNotice message="boom" onRetry={onRetry} />)
     fireEvent.click(screen.getByRole('button', { name: /try again/i }))
     expect(onRetry).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('latestTurnFailure', () => {
+  const ev = (type: string, data: Record<string, unknown> = {}) => ({ type, data })
+
+  it('returns the message of a turn that failed and was not retried', () => {
+    // eve 0.8x: a non-terminal turn.failed is followed by session.waiting (status -> "ready").
+    const events = [
+      ev('turn.started', { turnId: 't1' }),
+      ev('step.failed', { message: 'step boom' }),
+      ev('turn.failed', { turnId: 't1', message: 'Gateway request failed', terminal: false }),
+      ev('session.waiting'),
+    ]
+    expect(latestTurnFailure(events)).toBe('Gateway request failed')
+  })
+
+  it('returns null once a newer turn starts (the retry clears the notice)', () => {
+    const events = [
+      ev('turn.failed', { turnId: 't1', message: 'boom' }),
+      ev('session.waiting'),
+      ev('turn.started', { turnId: 't2' }),
+    ]
+    expect(latestTurnFailure(events)).toBeNull()
+  })
+
+  it('returns null for completed or cancelled turns', () => {
+    expect(latestTurnFailure([ev('turn.started'), ev('turn.completed')])).toBeNull()
+    expect(latestTurnFailure([ev('turn.started'), ev('turn.cancelled'), ev('session.waiting')])).toBeNull()
+    expect(latestTurnFailure([])).toBeNull()
   })
 })

@@ -9,7 +9,7 @@ const ownConversations: Access = ({ req }) => {
 /**
  * Thin index over Eve sessions. Each row maps a Payload user to an Eve
  * session id. Messages live in Eve (replayed via GET /eve/v1/session/:id/stream).
- * The `continuationToken` and `streamIndex` fields form the session cursor
+ * `eveSessionId` + `streamIndex` form Eve's session cursor
  * needed to continue or resume the session.
  */
 export const Conversations: CollectionConfig = {
@@ -38,7 +38,6 @@ export const Conversations: CollectionConfig = {
     // concurrent/double-submit upsert race (the second create fails the unique
     // constraint; the session-index route catches it and updates instead).
     { name: 'eveSessionId', type: 'text', index: true, unique: true },
-    { name: 'continuationToken', type: 'text' },
     { name: 'streamIndex', type: 'number' },
   ],
   // v4 enables versions by default; chat threads don't need version history.

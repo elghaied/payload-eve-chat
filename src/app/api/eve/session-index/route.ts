@@ -18,7 +18,7 @@ export async function POST(req: Request): Promise<Response> {
   // TypeScript narrows to User (users collection) after the guard above.
   const typedUser = user as User
 
-  let body: { eveSessionId?: unknown; continuationToken?: unknown; streamIndex?: unknown; title?: unknown }
+  let body: { eveSessionId?: unknown; streamIndex?: unknown; title?: unknown }
   try {
     body = await req.json()
   } catch {
@@ -29,14 +29,8 @@ export async function POST(req: Request): Promise<Response> {
     return Response.json({ error: 'Missing eveSessionId' }, { status: 400 })
   }
 
-  const {
-    eveSessionId,
-    continuationToken,
-    streamIndex,
-    title,
-  } = body as {
+  const { eveSessionId, streamIndex, title } = body as {
     eveSessionId: string
-    continuationToken?: string
     streamIndex?: number
     title?: string
   }
@@ -52,11 +46,7 @@ export async function POST(req: Request): Promise<Response> {
       // Lost the create race to a concurrent request; the row now exists — update below.
     }
   }
-  await updateConversationCursor(payload, eveSessionId, typedUser, {
-    continuationToken,
-    streamIndex,
-    title,
-  })
+  await updateConversationCursor(payload, eveSessionId, typedUser, { streamIndex, title })
 
   return Response.json({ ok: true })
 }

@@ -17,7 +17,7 @@ export function mcpApiKeyAuthorization(key: string): string {
 
 /**
  * The Payload MCP endpoint the Eve runtime should call. Local dev: localhost:3000. On Vercel the
- * Eve runtime is a SEPARATE service, so `localhost` is unreachable — `connection__search` then
+ * Eve runtime is a SEPARATE service, so `localhost` is unreachable — `eve__search` then
  * fails and Eve reports the connection as unavailable (breaking every Payload MCP tool, Unsplash
  * included). Fall back to the deployment's own public URL (VERCEL_PROJECT_PRODUCTION_URL →
  * VERCEL_URL). Override with MCP_SERVER_URL for a custom hostname.

@@ -7,6 +7,7 @@ afterEach(cleanup)
 
 const baseRequest: EveMessageInputRequest = {
   requestId: 'req-42',
+  kind: 'question',
   prompt: 'Could you clarify what you need?',
   display: 'select',
   allowFreeform: true,

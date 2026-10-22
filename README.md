@@ -91,8 +91,8 @@ flowchart LR
 
     subgraph eve["Eve runtime (vercel/eve)"]
         Agent["ToolLoopAgent — model via AI Gateway"]
-        Tools["built-in: web_search · web_fetch · todo · ask_question<br/>code-exec: disabled"]
-        Skill["skill: article-writing (load_skill)"]
+        Tools["built-in: web_search · web_fetch · ask_question (opt-in)<br/>code-exec: disabled"]
+        Skill["skill: article-writing (eve__skill)"]
         Sched["schedules — optional cron"]
     end
 
@@ -161,7 +161,7 @@ free MongoDB Atlas cluster — no Docker required.
   photos (`addPhotosToMedia`). Stored in Vercel Blob in production, local `/media` in dev (see
   [Media storage](#media-storage)).
 - **Posts** / **Tasks** — the content Eve manages over MCP.
-- **Conversations** — a thin per-thread index (`eveSessionId`, `continuationToken`, `streamIndex`,
+- **Conversations** — a thin per-thread index (`eveSessionId`, `streamIndex`,
   owner). Message bodies live in Eve, not Payload.
 
 ### The Eve agent
@@ -294,8 +294,10 @@ what this template uses:
 
 - **Agent runtime** — a `ToolLoopAgent` with the model routed through the **Vercel AI Gateway**
   (`agent/agent.ts`). One step per turn; the harness drives the tool loop.
-- **Built-in tools** — `web_search`, `web_fetch`, `todo`, `ask_question`, `load_skill`, plus
-  sandbox code-exec (`bash`/`read_file`/`write_file`/`glob`/`grep`) that you can toggle per tool.
+- **Built-in tools** — `web_search`, `web_fetch`, and the catalog tools `eve__search` /
+  `eve__tool` / `eve__skill` (how the agent finds MCP tools and loads skills), plus the opt-in
+  `ask_question` (enabled in `agent/tools/ask_question.ts`). Sandbox code-exec
+  (`bash`/`read_file`/`write_file`) is disabled per tool in `agent/tools/`.
   See the [default harness](https://eve.dev/docs/concepts/default-harness).
 - **Connections** — attach external tool servers (here, the Payload MCP server via
   `agent/connections/payload-mcp.ts`); Eve discovers their tools on demand.

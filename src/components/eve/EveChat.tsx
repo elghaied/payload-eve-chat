@@ -2,6 +2,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { useEveAgent } from 'eve/react'
 import type { EveDynamicToolPart } from 'eve/react'
+import type { ClientSessionState } from 'eve/client'
 import { PaperclipIcon, SquareIcon } from 'lucide-react'
 import {
   Conversation,
@@ -32,7 +33,7 @@ import { Reasoning } from '@/components/ai-elements/reasoning'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { dispatchConversationCreated } from './ConversationHistoryPanel'
 import { InputRequestCard } from './InputRequestCard'
-import { ThinkingIndicator, ErrorNotice, showWorkingIndicator } from './ChatStatus'
+import { ThinkingIndicator, ErrorNotice, latestTurnFailure, showWorkingIndicator } from './ChatStatus'
 import { getPendingInput, type InputResponseValue } from './inputRequest'
 import { VoiceButton } from './VoiceButton'
 import { useVoice } from './useVoice'
@@ -55,11 +56,8 @@ const VOICE_REPLY_INSTRUCTION =
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-export interface SessionCursor {
-  sessionId?: string
-  continuationToken?: string
-  streamIndex: number
-}
+/** Eve's serializable session cursor (`sessionId` + `streamIndex`). */
+export type SessionCursor = ClientSessionState
 
 export interface EveChatProps {
   activeId?: string
@@ -73,7 +71,6 @@ export interface EveChatProps {
 
 async function persistSession(opts: {
   sessionId: string
-  continuationToken?: string
   streamIndex: number
   title?: string
 }) {
@@ -85,7 +82,6 @@ async function persistSession(opts: {
       // The route's field is `eveSessionId` (not `sessionId`) — map it explicitly.
       body: JSON.stringify({
         eveSessionId: opts.sessionId,
-        continuationToken: opts.continuationToken,
         streamIndex: opts.streamIndex,
         title: opts.title,
       }),
@@ -330,14 +326,14 @@ const EveChatInner: React.FC<EveChatProps & { initialEvents: unknown[]; voiceAva
   const latestSessionIdRef = useRef<string | undefined>(undefined)
 
   const onSessionChange = useCallback(
-    (session: SessionCursor) => {
-      if (!session.sessionId) return
+    // `undefined` when the hook resets (new chat) — nothing to persist then.
+    (session: SessionCursor | undefined) => {
+      if (!session?.sessionId) return
       const sid = session.sessionId
       const firstSeen = latestSessionIdRef.current !== sid
       latestSessionIdRef.current = sid
       void persistSession({
         sessionId: sid,
-        continuationToken: session.continuationToken,
         streamIndex: session.streamIndex,
         title: titleRef.current,
       })
@@ -367,7 +363,7 @@ const EveChatInner: React.FC<EveChatProps & { initialEvents: unknown[]; voiceAva
 
   // Same-origin + cookie auth is automatic. No host/auth needed.
   const agent = useEveAgent({
-    initialSession: initialSession as SessionCursor | undefined,
+    initialSession,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     initialEvents: initialEvents as any,
     // Persistence is driven solely by onSessionChange (fires whenever the session
@@ -384,7 +380,7 @@ const EveChatInner: React.FC<EveChatProps & { initialEvents: unknown[]; voiceAva
     const STALL_MS = 60_000
     const id = window.setInterval(() => {
       if (Date.now() - lastEventAtRef.current > STALL_MS) {
-        agent.stop()
+        void agent.cancel()
         setStalled(true)
       }
     }, 5000)
@@ -414,11 +410,11 @@ const EveChatInner: React.FC<EveChatProps & { initialEvents: unknown[]; voiceAva
       if (!activeId && !titleRef.current && text.trim()) {
         titleRef.current = text.trim().slice(0, 80)
       }
-      void agent.send({ message: text, clientContext: VOICE_REPLY_INSTRUCTION })
+      void agent.send(text, { clientContext: VOICE_REPLY_INSTRUCTION })
     },
     onInterrupt: () => {
       // Pressing to talk while a turn is in flight stops it so the new request takes over.
-      agent.stop()
+      if (agent.status === 'submitted' || agent.status === 'streaming') void agent.cancel()
     },
   })
 
@@ -427,6 +423,7 @@ const EveChatInner: React.FC<EveChatProps & { initialEvents: unknown[]; voiceAva
     const hasFiles = message.files.length > 0
     if (!text && !hasFiles) return
     if (sendingRef.current) return // ignore re-entrant submits while a send is in flight
+    if (agent.status === 'resuming') return // eve rejects sends while catching up a session
     sendingRef.current = true
     setInput('')
     setAttachError(null)
@@ -436,7 +433,7 @@ const EveChatInner: React.FC<EveChatProps & { initialEvents: unknown[]; voiceAva
     // form's own clear() runs after our onSubmit promise resolves (turn-end), too late.
     clearAttachmentsRef.current?.()
 
-    const isNew = !activeId && !agent.session.sessionId
+    const isNew = !activeId && !agent.session?.sessionId
     // Capture the first user message as the title for a new thread (prefer text; fallback for file-only).
     if (isNew && !titleRef.current) {
       titleRef.current = (text ?? '[attachment]').slice(0, 80)
@@ -469,7 +466,7 @@ const EveChatInner: React.FC<EveChatProps & { initialEvents: unknown[]; voiceAva
       } else {
         userContent = text as string
       }
-      await agent.send({ message: userContent })
+      await agent.send(userContent)
     } finally {
       sendingRef.current = false
     }
@@ -481,7 +478,7 @@ const EveChatInner: React.FC<EveChatProps & { initialEvents: unknown[]; voiceAva
   // Answer a HITL input request (ask_question / approval) by resuming the turn.
   const handleRespondInput = useCallback(
     (response: InputResponseValue) => {
-      void agent.send({ inputResponses: [response] })
+      void agent.respond([response])
     },
     [agent],
   )
@@ -491,21 +488,22 @@ const EveChatInner: React.FC<EveChatProps & { initialEvents: unknown[]; voiceAva
   // Unsplash→Media tool, which takes an array) once — one batch call, not N single-add calls.
   const handleAddPhotos = useCallback(
     (photos: { photoId: string; description: string }[]) => {
-      if (agent.status === 'submitted' || agent.status === 'streaming') return
+      if (agent.status !== 'ready' && agent.status !== 'error') return
       if (photos.length === 0) return
       setStalled(false)
       const list = photos.map((p) => `- ${p.photoId}: ${p.description}`).join('\n')
-      void agent.send({
-        message:
+      void agent.send(
           `Add these ${photos.length} Unsplash photo(s) to Media in ONE call: call addPhotosToMedia with ` +
           `photos: [{ photoId, alt }] for all of them (write a fitting alt from each description). Use the ` +
           `returned media ids in the article via ![media:<id>]() with a "_Photo by [Name](creditUrl) on ` +
           `Unsplash_" caption — do NOT print the embed code as a message.\n${list}`,
-      })
+      )
     },
     [agent],
   )
   const agentBusy = agent.status === 'submitted' || agent.status === 'streaming'
+  // A failed (non-terminal) turn leaves status "ready" in eve 0.8x — surface it from the stream.
+  const turnFailure = latestTurnFailure(agent.events)
 
   // Retry after a failed/stalled turn by re-sending the most recent user message.
   const handleRetry = useCallback(() => {
@@ -519,7 +517,7 @@ const EveChatInner: React.FC<EveChatProps & { initialEvents: unknown[]; voiceAva
         .join('')
         .trim()
       if (text) {
-        void agent.send({ message: text })
+        void agent.send(text)
         return
       }
     }
@@ -602,10 +600,13 @@ const EveChatInner: React.FC<EveChatProps & { initialEvents: unknown[]; voiceAva
             {showWorkingIndicator({ status: agent.status, stalled, messages: agent.data.messages }) && (
               <ThinkingIndicator />
             )}
-            {agent.status === 'error' && (
+            {agent.status === 'error' ? (
               <ErrorNotice message={agent.error?.message} onRetry={handleRetry} />
+            ) : (
+              agent.status === 'ready' &&
+              turnFailure && <ErrorNotice message={turnFailure} onRetry={handleRetry} />
             )}
-            {stalled && agent.status !== 'error' && (
+            {stalled && agent.status !== 'error' && !turnFailure && (
               <ErrorNotice
                 message="The response stalled — often a slow web search — and was stopped. Please try again."
                 onRetry={handleRetry}
@@ -667,13 +668,16 @@ const EveChatInner: React.FC<EveChatProps & { initialEvents: unknown[]; voiceAva
               )}
             </PromptInputTools>
             <PromptInputSubmit
-              status={agent.status}
-              onStop={agent.stop}
+              // The AI Elements button doesn't know eve's "resuming" (session catch-up): show it
+              // as idle but disabled, since eve rejects sends and cancels until it finishes.
+              status={agent.status === 'resuming' ? 'ready' : agent.status}
+              onStop={() => void agent.cancel()}
               disabled={
-                agent.status !== 'streaming' &&
-                agent.status !== 'submitted' &&
-                !input.trim() &&
-                attachmentCount === 0
+                agent.status === 'resuming' ||
+                (agent.status !== 'streaming' &&
+                  agent.status !== 'submitted' &&
+                  !input.trim() &&
+                  attachmentCount === 0)
               }
             />
           </PromptInputFooter>
